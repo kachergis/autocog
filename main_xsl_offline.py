@@ -6,8 +6,11 @@ candidate is fitted to the whole XSLmodels corpus (group NLL, scored by BIC),
 and a critic steers the next revision. The best candidate of each round joins
 the leaderboard, which starts from the fitted seed theories.
 
-    uv run python main_xsl_offline.py --llm_provider anthropic \
-        --llm_model claude-opus-5-5 --n_rounds 1 --max_iters 3
+    uv run python main_xsl_offline.py --llm_provider openrouter \
+        --llm_model anthropic/claude-opus-5.5 --n_rounds 1 --max_iters 3
+
+API keys are read from `.env` at the repo root (see README §3), e.g.
+OPENROUTER_API_KEY for --llm_provider openrouter.
 
 Outputs (resumable; re-running continues the rounds) under --out:
     leaderboard.json / leaderboard.md   every theory with its corpus fit
@@ -101,6 +104,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--max_iters", type=int, default=5, help="propose/fit/critique iterations per round")
     p.add_argument("--llm_provider", default=None, help="override configs/default.yaml's provider")
     p.add_argument("--llm_model", default=None)
+    p.add_argument("--reasoning_effort", default="high",
+                   help="OpenRouter reasoning effort; reasoning tokens dominate cost ('max' can use 100k+ per call)")
     p.add_argument("--config", type=Path, default=ROOT / "configs/default.yaml")
     p.add_argument("--guide", default=DEFAULT_GUIDE)
     p.add_argument("--popsize", type=int, default=FitBudget.popsize)
@@ -108,6 +113,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--cv", action="store_true", help="cross-validate every leaderboard theory at the end")
     p.add_argument("--cv_folds", type=int, default=5)
     return p.parse_args(argv)
+
+
+# Closed-model vendors on OpenRouter: their endpoints report quantization
+# "unknown", so src.llm's fp8-only routing (chosen for open-weight models)
+# would match no endpoint at all.
+CLOSED_MODEL_VENDORS = ("anthropic/", "google/", "openai/", "x-ai/")
 
 
 def make_llm_client(args: argparse.Namespace):
@@ -120,7 +131,12 @@ def make_llm_client(args: argparse.Namespace):
         llm = llm.model_copy(update={"provider": args.llm_provider})
     if args.llm_model:
         llm = llm.model_copy(update={"model": args.llm_model})
-    return make_client(llm)
+    if llm.provider == "openrouter":
+        llm = llm.model_copy(update={"reasoning_effort": args.reasoning_effort})
+    client = make_client(llm)
+    if llm.provider == "openrouter" and llm.model.startswith(CLOSED_MODEL_VENDORS):
+        client.extra_body["provider"].pop("quantizations", None)
+    return client
 
 
 def seed_leaderboard(conditions: list[Condition], budget: FitBudget) -> list[Entry]:

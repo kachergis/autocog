@@ -130,3 +130,15 @@ def test_leaderboard_persistence_round_trip(conditions, leaderboard, tmp_path) -
     assert loaded[0].fit.nll == pytest.approx(leaderboard[0].fit.nll, rel=1e-12)
     assert (tmp_path / "theories" / "baseline.yaml").exists()
     assert "baseline" in (tmp_path / "leaderboard.md").read_text()
+
+
+def test_openrouter_client_for_closed_models(monkeypatch) -> None:
+    pytest.importorskip("anthropic")  # src.llm needs every SDK installed
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-not-real")
+    args = main_xsl_offline.parse_args(["--llm_provider", "openrouter", "--llm_model", "anthropic/claude-opus-5.5"])
+    client = main_xsl_offline.make_llm_client(args)
+    assert client.model == "anthropic/claude-opus-5.5"
+    assert "quantizations" not in client.extra_body["provider"]
+    assert client.extra_body["reasoning"]["effort"] == "high"
+    args = main_xsl_offline.parse_args(["--llm_provider", "openrouter", "--llm_model", "deepseek/deepseek-v4-pro-0813"])
+    assert main_xsl_offline.make_llm_client(args).extra_body["provider"]["quantizations"] == ["fp8"]
