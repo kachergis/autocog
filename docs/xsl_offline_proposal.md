@@ -244,6 +244,31 @@ results/xsl/
    - Tests cover closed-form likelihoods, parameter recovery (incl. `lapse`),
      seed YAMLs = reference ports, the accept gate / retries / critic with a
      fake LLM client, and leaderboard persistence.
+   **First runs (2026-10-14), anthropic/claude-sonnet-5.5 via OpenRouter,
+   6 rounds × max 3 iterations, ≈ $3 total** (incl. one $1.30 runaway reply —
+   now capped). Data: XSLmodels 2999e8b, i.e. before PR #31 fixed the 211/214
+   test alternatives; re-score after re-exporting at e70c10c.
+
+   | theory | k | BIC (full) | held-out NLL (5-fold) | held-out wSSE |
+   |---|---|---|---|---|
+   | xsl_04 test-time object-claim competition | 8 | 31,165.9 | **15,879.4** | **0.511** |
+   | xsl_05 + consecutive-repetition boost | 9 | **31,077.1** | 16,040.9 | 0.547 |
+   | xsl_06 + consolidation protection | 10 | 31,093.9 | 16,095.6 | 0.545 |
+   | xsl_02 verify-and-consolidate | 6 | 32,002.0 | 16,104.9 | 0.538 |
+   | xsl_03 load-scaled interference | 6 | 31,863.2 | 16,128.6 | 0.563 |
+   | xsl_01 interference-limited mutual responsibility | 5 | 32,045.4 | 16,146.9 | 0.590 |
+   | kachergis | 4 | 32,391.7 | 16,274.8 | 0.598 |
+   | baseline | 1 | 39,486.6 | 19,786.1 | 1.381 |
+
+   Lessons: (1) BIC on the group likelihood admits overfitting — xsl_05/06
+   beat xsl_04 on BIC but lose to it held out, so the accept gate (or at
+   least the leaderboard the LLM sees) should use CV. (2) The gains are
+   uneven: xsl_04 beats kachergis held out in 28 of 47 conditions and loses
+   most on the filtering conditions and 301. (3) Several xsl_04 parameters
+   are weakly identified (fold-to-fold Mmax 0.3–9, q 0.33–0.96). (4) All
+   theories are invariant to index shuffling (no diagonal exploitation); the
+   loop now shuffles by construction.
+
 2. **Retrospective debate.** Seeds kachergis vs propose-but-verify / pursuit.
 3. **Prospective stream.** Design generator + validator, incumbent service,
    divergence-at-matched-fit acceptance, the queue.

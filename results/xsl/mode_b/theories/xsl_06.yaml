@@ -1,0 +1,72 @@
+name: Consolidation-protected boosted interference learning
+theory: 'Learning is competitive and interference-limited. Each pair gains the product of its word-side
+  and object-side responsibilities (soft mutual exclusivity and explaining away), and the gain saturates.
+  Retrieval-induced interference prunes a word''s links to absent objects and an object''s links to absent
+  words, at a rate that is a power law of trial load. A one-trial working-memory trace boosts pairs that
+  repeat on consecutive trials (temporal contiguity). The new mechanism is consolidation: interference
+  is not equally damaging to every link. Weak, tentative associations are fully exposed to it, while associations
+  that have already been built up become progressively protected from it. Protection falls as 1/(1+(M/h)^2),
+  so strength acts as a soft consolidation threshold. Words seen often enough to cross the threshold become
+  durable and snowball, as with 9-repetition words and sparse 1-word trials. Words that never cross it
+  keep being eroded under dense load. At test, an object claimed by other words is a poorer referent,
+  with a share^b competition term plus a retrieval floor, and choice is a power-law Luce rule.'
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      d = params['d']
+      q = params['q']
+      lam = params['lam']
+      Mmax = params['Mmax']
+      fl = params['fl']
+      b = params['b']
+      r = params['r']
+      h = params['h']
+      s = 4.0
+      c = 0.5
+      g = 0.5
+      eps = 0.1
+      M = np.zeros((n_words, n_objects))
+      prev = np.zeros((n_words, n_objects))
+      for words, objs in trials:
+          words = np.asarray(words)
+          objs = np.asarray(objs)
+          nw = len(words)
+          no = len(objs)
+          enc = 1.0 / (1.0 + (no / c) ** g)
+          deff = min(0.95, d * (nw * no / 12.0) ** q)
+          ix = np.ix_(words, objs)
+          blk = M[ix].copy()
+          prot = 1.0 / (1.0 + (M / h) ** 2)
+          M[words, :] *= (1.0 - deff * prot[words, :])
+          M[:, objs] *= (1.0 - deff * prot[:, objs])
+          st = (blk + eps) ** s
+          rw = st / st.sum(1, keepdims=True)
+          ro = st / st.sum(0, keepdims=True)
+          inc = rw * ro
+          sat = np.clip(1.0 - blk / Mmax, 0.0, 1.0)
+          bonus = 1.0 + r * prev[ix]
+          M[ix] = blk + lam * enc * inc * sat * bonus
+          prev = np.zeros((n_words, n_objects))
+          prev[ix] = 1.0
+      col = M.sum(0, keepdims=True)
+      share = (M + 1e-9) / (col + 0.05)
+      out = M * share ** b
+      return out + fl + 1e-6
+parameters:
+  d: '[0.0, 1.0]'
+  q: '[0.0, 2.0]'
+  lam: '[0.05, 4]'
+  Mmax: '[0.3, 10]'
+  fl: '[0.0, 3.0]'
+  b: '[0.0, 3.0]'
+  r: '[0.0, 30]'
+  h: '[0.05, 30]'
+  ch_dec: '[0.3, 6]'
+rationale: 'The best leaderboard theory (xsl_05) underpredicts conditions where items are repeated often
+  or trials are sparse: 220 (9 reps) 0.44 vs 0.685 human, freq369 high-frequency mixes 0.445 vs 0.62,
+  and 1x3 215 0.52 vs 0.74. It also over-erodes already-learned pairs. Its interference decay is applied
+  uniformly regardless of how well a pair is known. Making the decay of each link shrink with its own
+  strength (consolidation) lets well-practised words persist, which produces the steeper-than-linear benefit
+  of frequency seen in the data. Weakly learned words in dense trials (3x4, 4x4) are still pruned, so
+  the low-accuracy conditions are kept. It costs a single extra parameter, h. As h gets large the protection
+  vanishes and the model reduces to xsl_05, so the fit can only improve in the nested sense, and the NLL
+  gain on the frequency-manipulation conditions should outweigh the BIC penalty.'
