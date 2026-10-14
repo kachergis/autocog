@@ -139,6 +139,8 @@ def test_openrouter_client_for_closed_models(monkeypatch) -> None:
     client = main_xsl_offline.make_llm_client(args)
     assert client.model == "anthropic/claude-opus-5.5"
     assert "quantizations" not in client.extra_body["provider"]
+    assert client.extra_body["provider"]["require_parameters"] is False
     assert client.extra_body["reasoning"]["effort"] == "high"
     args = main_xsl_offline.parse_args(["--llm_provider", "openrouter", "--llm_model", "deepseek/deepseek-v4-pro-0813"])
-    assert main_xsl_offline.make_llm_client(args).extra_body["provider"]["quantizations"] == ["fp8"]
+    open_weight = main_xsl_offline.make_llm_client(args).extra_body["provider"]
+    assert open_weight["quantizations"] == ["fp8"] and open_weight["require_parameters"] is True

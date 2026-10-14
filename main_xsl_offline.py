@@ -115,9 +115,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-# Closed-model vendors on OpenRouter: their endpoints report quantization
-# "unknown", so src.llm's fp8-only routing (chosen for open-weight models)
-# would match no endpoint at all.
+# Closed-model vendors on OpenRouter. src.llm's routing was chosen for
+# open-weight models and matches none of their endpoints: they report
+# quantization "unknown" (so the fp8-only filter fails), and some reject
+# `temperature` (e.g. every Claude Sonnet 5.5 endpoint), which
+# `require_parameters` turns into a hard routing failure. Neither filter is
+# needed here: the XSL loop parses free text, never `response_format`, so
+# OpenRouter may simply drop a parameter a backend does not support.
 CLOSED_MODEL_VENDORS = ("anthropic/", "google/", "openai/", "x-ai/")
 
 
@@ -136,6 +140,7 @@ def make_llm_client(args: argparse.Namespace):
     client = make_client(llm)
     if llm.provider == "openrouter" and llm.model.startswith(CLOSED_MODEL_VENDORS):
         client.extra_body["provider"].pop("quantizations", None)
+        client.extra_body["provider"]["require_parameters"] = False
     return client
 
 
