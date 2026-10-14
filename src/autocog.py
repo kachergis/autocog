@@ -5,10 +5,11 @@ import math
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
 from scipy import stats
 
-from src.config import load_config
-from src.llm import LLMClient, make_client
+from src.config import LLMConfig
+from src.llm import LLMClient, client_from_config
 from src.experiment import Experiment
 from src.metric import Estimate, Metric
 from src.observation import Observation, Observations
@@ -64,10 +65,10 @@ class AutoCog:
         label: str,
         experiment_class: type[Experiment],
         config_path: str | Path = "configs/default.yaml",
+        llm: LLMConfig | None = None,
     ) -> "AutoCog":
         theory = Theory.from_yaml(theory_path)
-        run_cfg = load_config(Path(config_path))
-        llm_client = make_client(run_cfg.llm)
+        llm_client = client_from_config(config_path, llm)
         return cls(
             label=label,
             theory=theory,
@@ -262,12 +263,23 @@ class AutoCog:
         last: Observation | None = None
 
         for k_exp in range(max_experiments):
-            experiment = self._llm_propose_experiment(
-                adversary,
-                ledger=list(pool.experiments) + rejected_experiments,
-                workspace=workspace,
-                log_label=f"experiment_attempt_{k_exp:02d}",
-            )
+            try:
+                experiment = self._llm_propose_experiment(
+                    adversary,
+                    ledger=list(pool.experiments) + rejected_experiments,
+                    workspace=workspace,
+                    log_label=f"experiment_attempt_{k_exp:02d}",
+                )
+            except ValidationError as exc:
+                # Schema-valid JSON that breaks the experiment's own
+                # invariants (e.g. rating lists shorter than n_features). A
+                # fresh sample usually passes, so spend this attempt on one.
+                first = exc.errors()[0].get("msg", str(exc)) if exc.errors() else str(exc)
+                log(
+                    f"[experiment_attempt_{k_exp:02d}] invalid proposal, "
+                    f"re-proposing: {first[:200]}"
+                )
+                continue
             data_self = experiment.simulate(self._theory, n_runs=n_runs)
             data_adv = experiment.simulate(adversary.theory, n_runs=n_runs)
 
@@ -396,7 +408,11 @@ class AutoCog:
 
             rejected_experiments.append(experiment)
 
-        assert last is not None  # max_experiments >= 1 and max_metrics >= 1
+        if last is None:
+            raise RuntimeError(
+                f"{self.label}: all {max_experiments} experiment proposals "
+                f"failed validation; see the invalid-proposal log lines above."
+            )
         print(
             f"[round {round_idx}] no attempt accepted after "
             f"{max_experiments} experiments × {max_metrics} metrics; "
