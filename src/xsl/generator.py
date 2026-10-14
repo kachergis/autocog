@@ -4,14 +4,16 @@ The XSL counterpart of `src.theory_generator.TheoryGenerator`, with the same
 loop contract:
 
   * the proposer always builds on the running-best ACCEPTED candidate;
-  * a candidate is ACCEPTED iff its BIC is strictly lower than the running
-    best (iteration 0's first fitted candidate auto-accepts);
+  * a candidate is ACCEPTED iff its held-out NLL (k-fold CV over
+    conditions, same split for every candidate) is strictly lower than the
+    running best's (iteration 0's first valid candidate auto-accepts);
   * a critic's "continue" ends the loop only if the candidate was accepted;
   * the loop returns the running-best accepted candidate.
 
 What differs is the evidence: candidates are fitted to the whole human corpus
-(`src.xsl.fitting`) instead of being simulated on observations, so the loss
-is BIC on the group likelihood.
+(`src.xsl.fitting`) instead of being simulated on observations. The loss is
+cross-validated NLL rather than BIC: in the first runs BIC on the full-corpus
+group likelihood admitted candidates that fit better and generalised worse.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from src.xsl.corpus import Condition
-from src.xsl.fitting import FitBudget, fit_theory, total_choices
+from src.xsl.fitting import FitBudget, cross_validate_theory, fit_theory, total_choices
 from src.xsl.prompts import CritiqueVerdict, Entry, Iteration, render_critique, render_generation
 from src.xsl.theory import XSLTheory
 
@@ -56,12 +58,16 @@ class XSLTheoryGenerator:
         budget: FitBudget = FitBudget(),
         max_attempts: int = 3,
         max_seconds_per_pass: float = 2.0,
+        cv_folds: int = 5,
+        cv_workers: int = 1,
     ):
         self.llm_client = llm_client
         self.conditions = list(conditions)
         self.budget = budget
         self.max_attempts = max_attempts
         self.max_seconds_per_pass = max_seconds_per_pass
+        self.cv_folds = cv_folds
+        self.cv_workers = cv_workers
         self.n_choices = total_choices(self.conditions)
 
     # --- llm ---------------------------------------------------------------------
@@ -124,14 +130,16 @@ class XSLTheoryGenerator:
                 continue
 
             fit = fit_theory(theory, self.conditions, budget=self.budget)
-            accepted = best is None or fit.bic < best.fit.bic
-            it = Iteration(candidate=theory, fit=fit, accepted=accepted)
-            if accepted:
+            cv = cross_validate_theory(theory, self.conditions, k=self.cv_folds,
+                                       budget=self.budget, workers=self.cv_workers)
+            it = Iteration(candidate=theory, fit=fit, accepted=False, cv=cv)
+            it.accepted = best is None or it.score < best.score
+            if it.accepted:
                 best = it
             print(
-                f"[xsl generator iter {crit}] {theory.name}: BIC {fit.bic:.1f} "
-                f"({fit.n_free} params, {fit.seconds:.0f}s fit) -> "
-                f"{'ACCEPTED' if accepted else 'REJECTED'} (best BIC {best.fit.bic:.1f})"
+                f"[xsl generator iter {crit}] {theory.name}: held-out NLL {it.score:.1f}, "
+                f"BIC {fit.bic:.1f} ({fit.n_free} params) -> "
+                f"{'ACCEPTED' if it.accepted else 'REJECTED'} (best held-out NLL {best.score:.1f})"
             )
 
             c_system, c_user = render_critique(
@@ -145,7 +153,7 @@ class XSLTheoryGenerator:
             except Exception as e:  # noqa: BLE001 - an unparseable critique just means "keep going"
                 print(f"[xsl generator iter {crit}] critique unparseable ({type(e).__name__}: {e})")
             history.append(it)
-            if it.critique is not None and it.critique.verdict == "continue" and accepted:
+            if it.critique is not None and it.critique.verdict == "continue" and it.accepted:
                 break
 
         if best is None:

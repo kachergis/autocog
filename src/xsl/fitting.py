@@ -254,6 +254,39 @@ class CVResult:
     fold_params: list[dict[str, float]]
 
 
+def cv_folds(n: int, k: int, seed: int) -> list[np.ndarray]:
+    """The k folds of condition indices. Same (n, k, seed) -> same folds, so
+    every theory is cross-validated on an identical split. At most n folds."""
+    return np.array_split(np.random.default_rng(seed).permutation(n), min(k, n))
+
+
+def _fit_fold(learner: Learner, free, fixed, conditions, held, budget, fit_lapse):
+    held_set = set(held.tolist())
+    train = [c for i, c in enumerate(conditions) if i not in held_set]
+    result = fit(learner, free, train, fixed=fixed, budget=budget, fit_lapse=fit_lapse)
+    ev = evaluate(learner, result.params, [conditions[i] for i in held])
+    return held, result.params, ev.per_condition_nll, ev.per_condition_sse
+
+
+def _assemble_cv(conditions, fold_results) -> CVResult:
+    n = len(conditions)
+    per_nll = [math.nan] * n
+    per_sse = [math.nan] * n
+    fold_params = []
+    for held, params, nlls, sses in fold_results:
+        fold_params.append(params)
+        for i, nll_i, sse_i in zip(held, nlls, sses):
+            per_nll[i] = nll_i
+            per_sse[i] = sse_i
+    weights = np.array([c.n_subj for c in conditions], dtype=float)
+    return CVResult(
+        heldout_nll=float(sum(per_nll)),
+        heldout_weighted_sse=float((np.array(per_sse) * weights).sum() / weights.sum()),
+        per_condition_nll=per_nll,
+        fold_params=fold_params,
+    )
+
+
 def cross_validate(
     learner: Learner,
     free: dict[str, tuple[float, float]],
@@ -266,28 +299,48 @@ def cross_validate(
     fit_lapse: bool = True,
 ) -> CVResult:
     """Fit on k-1 folds of conditions, score the held-out fold; repeat for every fold."""
-    n = len(conditions)
-    order = np.random.default_rng(seed).permutation(n)
-    folds = np.array_split(order, k)
-    per_nll = [math.nan] * n
-    per_sse = [math.nan] * n
-    fold_params = []
-    for held in folds:
-        held_set = set(held.tolist())
-        train = [conditions[i] for i in range(n) if i not in held_set]
-        result = fit(learner, free, train, fixed=fixed, budget=budget, fit_lapse=fit_lapse)
-        fold_params.append(result.params)
-        ev = evaluate(learner, result.params, [conditions[i] for i in held])
-        for i, nll_i, sse_i in zip(held, ev.per_condition_nll, ev.per_condition_sse):
-            per_nll[i] = nll_i
-            per_sse[i] = sse_i
-    weights = np.array([c.n_subj for c in conditions], dtype=float)
-    return CVResult(
-        heldout_nll=float(sum(per_nll)),
-        heldout_weighted_sse=float((np.array(per_sse) * weights).sum() / weights.sum()),
-        per_condition_nll=per_nll,
-        fold_params=fold_params,
-    )
+    conditions = list(conditions)
+    return _assemble_cv(conditions, [
+        _fit_fold(learner, free, fixed, conditions, held, budget, fit_lapse)
+        for held in cv_folds(len(conditions), k, seed)
+    ])
+
+
+def _theory_fold(theory_dump: dict, conditions, held, budget):
+    # runs in a worker process: rebuild the theory from its source there,
+    # since exec'd learners cannot be pickled
+    from src.xsl.theory import XSLTheory
+
+    theory = XSLTheory(**theory_dump)
+    return _fit_fold(theory.learner(), theory.free_parameters, theory.fixed_parameters,
+                     conditions, held, budget, True)
+
+
+def cross_validate_theory(
+    theory,
+    conditions: Sequence[Condition],
+    *,
+    k: int = 5,
+    seed: int = 0,
+    budget: FitBudget = FitBudget(),
+    workers: int = 1,
+) -> CVResult:
+    """`cross_validate` for an `XSLTheory`, with folds fitted in `workers` processes."""
+    conditions = list(conditions)
+    folds = cv_folds(len(conditions), k, seed)
+    if workers <= 1:
+        return _assemble_cv(conditions, [
+            _fit_fold(theory.learner(), theory.free_parameters, theory.fixed_parameters,
+                      conditions, held, budget, True)
+            for held in folds
+        ])
+    from concurrent.futures import ProcessPoolExecutor
+
+    dump = theory.model_dump()
+    n_folds = len(folds)
+    with ProcessPoolExecutor(max_workers=min(workers, n_folds)) as pool:
+        results = list(pool.map(_theory_fold, [dump] * n_folds, [conditions] * n_folds, folds, [budget] * n_folds))
+    return _assemble_cv(conditions, results)
 
 
 def fit_theory(theory, conditions: Sequence[Condition], *, budget: FitBudget = FitBudget()) -> FitResult:

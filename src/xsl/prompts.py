@@ -16,7 +16,7 @@ from pydantic import Field
 
 from src.promptable import Promptable
 from src.xsl.corpus import Condition
-from src.xsl.fitting import FitResult
+from src.xsl.fitting import CVResult, FitResult
 from src.xsl.theory import XSLTheory
 
 
@@ -37,11 +37,17 @@ class CritiqueVerdict(Promptable):
 
 @dataclass
 class Entry:
-    """One theory on the leaderboard, with its corpus fit."""
+    """One theory on the leaderboard: its full-corpus fit and its cross-validation."""
 
     label: str
     theory: XSLTheory
     fit: FitResult
+    cv: CVResult | None = None
+
+    @property
+    def score(self) -> float:
+        """Held-out NLL (lower is better); entries not yet cross-validated sort last."""
+        return self.cv.heldout_nll if self.cv is not None else math.inf
 
 
 @dataclass
@@ -53,10 +59,16 @@ class Iteration:
     accepted: bool
     critique: CritiqueVerdict | None = None
     error: str | None = None
+    cv: CVResult | None = None
 
     @property
     def bic(self) -> float:
         return self.fit.bic if self.fit is not None else math.inf
+
+    @property
+    def score(self) -> float:
+        """Held-out NLL: what the accept gate compares."""
+        return self.cv.heldout_nll if self.cv is not None else math.inf
 
 
 DOMAIN = """\
@@ -99,8 +111,8 @@ Do not implement the choice rule yourself.
 
 ## PARAMETERS
 `parameters` maps each name to a string interval "[lo, hi]" (fitted to the \
-data) or a bare number (held fixed). Every free parameter costs log(N) BIC \
-(see below), so add one only if it buys a real improvement in fit. Every \
+data) or a bare number (held fixed). Add a parameter only if it captures \
+something that generalises across conditions (see scoring below). Every \
 theory automatically gets one extra fitted parameter, `lapse`: the rate of \
 pure guessing (uniform over the choices) at test. Do not declare `lapse` \
 yourself, and do not model random guessing inside `learn`.
@@ -110,23 +122,29 @@ Each theory is FITTED to all 47 conditions at once (one parameter set for \
 everyone) by differential evolution, minimising the negative log-likelihood \
 (NLL) of every human test choice: multinomial over objects for n-AFC tests \
 (so WHICH wrong object people choose matters, not just accuracy), binomial \
-correct/incorrect for m-AFC tests. The score is BIC = 2*NLL + k*ln(N) with \
-k free parameters (yours plus `lapse`) and N = {n_choices} choices. Lower is better. The \
-n_subj-weighted SSE on per-word accuracy (the xsl-bakeoff objective) is \
-shown for reference but is not the score.
+correct/incorrect for m-AFC tests.
+
+The SCORE is the held-out NLL from 5-fold cross-validation over conditions: \
+the theory is fitted to four fifths of the conditions and must predict the \
+human choices in the remaining fifth, for each fifth in turn (always the same \
+split), and the five held-out NLLs are summed. Lower is better. Extra \
+parameters that only fit the training conditions do not help here and \
+usually hurt. Also shown, for reference only: BIC = 2*NLL + k*ln(N) of the \
+full-corpus fit (k free parameters incl. `lapse`, N = {n_choices} choices) and \
+the n_subj-weighted SSE on per-word accuracy (the xsl-bakeoff objective).
 """
 
 GENERATOR_SYSTEM = """\
 You are a cognitive scientist and expert Python programmer working on theories \
 of cross-situational word learning. Your job is to propose a NEW theory, with \
-an executable learner, that explains the human data better (lower BIC) than \
-every theory on the leaderboard.
+an executable learner, that predicts the human data better (lower held-out \
+NLL) than every theory on the leaderboard.
 
 {domain}
 ## ACCEPT GATE
-You work in a loop. Each proposal is fitted and scored; it is ACCEPTED only \
-if its BIC is strictly lower than the best accepted candidate so far in this \
-loop. `## CURRENT BEST CANDIDATE` always shows the best accepted candidate, \
+You work in a loop. Each proposal is fitted and cross-validated; it is \
+ACCEPTED only if its held-out NLL is strictly lower than that of the best \
+accepted candidate so far in this loop. `## CURRENT BEST CANDIDATE` always shows the best accepted candidate, \
 never a rejected one, so build on it. A critic comments on each candidate; \
 the `## LOOP HISTORY` block shows which of its suggestions helped (ACCEPTED) \
 and which did not (REJECTED).
@@ -187,39 +205,57 @@ def _params(fit: FitResult) -> str:
     return vals + (f" — at bound: {', '.join(fit.at_bound)}" if fit.at_bound else "")
 
 
+def _held_out(cv: CVResult | None) -> str:
+    if cv is None:
+        return "n/a | n/a"
+    return f"{cv.heldout_nll:.1f} | {cv.heldout_weighted_sse:.4f}"
+
+
 def leaderboard_table(entries: Sequence[Entry]) -> str:
-    rows = sorted(entries, key=lambda e: e.fit.bic)
-    lines = ["| rank | label | name | k | BIC | NLL | wSSE | fitted parameters |",
+    rows = sorted(entries, key=lambda e: e.score)
+    lines = ["| rank | label | name | k | held-out NLL (score) | held-out wSSE | BIC (full fit) "
+             "| fitted parameters (full fit) |",
              "|---|---|---|---|---|---|---|---|"]
     for i, e in enumerate(rows, 1):
         lines.append(
-            f"| {i} | {e.label} | {e.theory.name} | {e.fit.n_free} | {e.fit.bic:.1f} "
-            f"| {e.fit.nll:.1f} | {e.fit.evaluation.weighted_sse:.4f} | {_params(e.fit)} |"
+            f"| {i} | {e.label} | {e.theory.name} | {e.fit.n_free} | {_held_out(e.cv)} "
+            f"| {e.fit.bic:.1f} | {_params(e.fit)} |"
         )
     return "\n".join(lines)
 
 
 def leaderboard_details(entries: Sequence[Entry]) -> str:
     return "\n\n".join(
-        f"### {e.label}: {e.theory.name}\n{e.theory.description}" for e in sorted(entries, key=lambda e: e.fit.bic)
+        f"### {e.label}: {e.theory.name}\n{e.theory.description}" for e in sorted(entries, key=lambda e: e.score)
     )
 
 
-def fit_diagnostics(fit: FitResult, conditions: Sequence[Condition], reference: Entry | None) -> str:
-    """Per-condition fit, worst first (by NLL excess over the reference theory if given)."""
+def _per_condition_nll(fit: FitResult, cv: CVResult | None) -> list[float]:
+    return cv.per_condition_nll if cv is not None else fit.evaluation.per_condition_nll
+
+
+def fit_diagnostics(fit: FitResult, cv: CVResult | None, conditions: Sequence[Condition],
+                    reference: Entry | None) -> str:
+    """Per-condition fit, worst first: held-out NLL when cross-validated (else
+    full-fit NLL), ranked by its excess over the reference theory if given,
+    otherwise by NLL per human choice (raw NLL grows with condition size)."""
     ev = fit.evaluation
-    ref = reference.fit.evaluation.per_condition_nll if reference is not None else None
+    nll = _per_condition_nll(fit, cv)
+    ref = _per_condition_nll(reference.fit, reference.cv) if reference is not None else None
     rows = []
     for i, c in enumerate(conditions):
-        excess = ev.per_condition_nll[i] - (ref[i] if ref else 0.0)
-        rows.append((excess, c, ev.per_condition_perf[i], ev.per_condition_nll[i]))
+        key = nll[i] - ref[i] if ref else nll[i] / c.response_matrix.counts.sum()
+        rows.append((key, c, ev.per_condition_perf[i], nll[i]))
     rows.sort(key=lambda r: -r[0])
-    ref_note = f" minus {reference.label}'s" if reference is not None else ""
-    lines = [f"| label | condition | human acc | model acc | NLL | NLL{ref_note} |", "|---|---|---|---|---|---|"]
-    for excess, c, perf, nll in rows:
+    kind = "held-out NLL" if cv is not None else "NLL"
+    last = f"{kind} minus {reference.label}'s" if reference is not None else f"{kind} per choice"
+    lines = [f"| label | condition | human acc | model acc (full fit) | {kind} | {last} |",
+             "|---|---|---|---|---|---|"]
+    for key, c, perf, nll in rows:
+        shown = f"{key:+.1f}" if reference is not None else f"{key:.3f}"
         lines.append(
             f"| {c.label} | {c.condition} | {np.mean(c.accuracy):.3f} | {np.nanmean(perf):.3f} "
-            f"| {nll:.1f} | {excess:+.1f} |"
+            f"| {nll:.1f} | {shown} |"
         )
     return "\n".join(lines)
 
@@ -233,7 +269,7 @@ def history_block(history: Sequence[Iteration]) -> str:
             out.append(f"- iter {i}: FAILED — {it.error}")
             continue
         tag = "ACCEPTED" if it.accepted else "REJECTED"
-        line = f"- iter {i}: {it.candidate.name} — BIC {it.bic:.1f} — {tag}"
+        line = f"- iter {i}: {it.candidate.name} — held-out NLL {it.score:.1f} (BIC {it.bic:.1f}) — {tag}"
         if it.critique is not None:
             line += f"\n  critic: {it.critique.rationale}"
         out.append(line)
@@ -253,23 +289,24 @@ def render_generation(
         domain=DOMAIN.format(n_choices=n_choices), format=XSLTheory.instruction_format(),
         output_rules=OUTPUT_RULES,
     )
-    reference = min(leaderboard, key=lambda e: e.fit.bic) if leaderboard else None
+    reference = min(leaderboard, key=lambda e: e.score) if leaderboard else None
     parts = [
         f"## GOAL\n{guide}",
         f"## CORPUS (47 conditions)\n{corpus_table(conditions)}",
-        f"## LEADERBOARD (fitted to the full corpus; lower BIC is better)\n{leaderboard_table(leaderboard)}",
+        f"## LEADERBOARD (ranked by held-out NLL; lower is better)\n{leaderboard_table(leaderboard)}",
         f"## LEADERBOARD THEORIES\n{leaderboard_details(leaderboard)}",
     ]
     if reference is not None:
         parts.append(
             f"## BEST LEADERBOARD THEORY: {reference.label}\n{reference.theory.pretty_print()}\n"
-            f"Per-condition fit, worst first:\n{fit_diagnostics(reference.fit, conditions, None)}"
+            f"Per-condition fit, worst first:\n{fit_diagnostics(reference.fit, reference.cv, conditions, None)}"
         )
     if best is not None and best.fit is not None:
         parts.append(
-            f"## CURRENT BEST CANDIDATE (this loop) — BIC {best.fit.bic:.1f}, params {_params(best.fit)}\n"
+            f"## CURRENT BEST CANDIDATE (this loop) — held-out NLL {best.score:.1f}, "
+            f"BIC {best.fit.bic:.1f}, params {_params(best.fit)}\n"
             f"{best.candidate.pretty_print()}\n"
-            f"Per-condition fit, worst first:\n{fit_diagnostics(best.fit, conditions, reference)}"
+            f"Per-condition fit, worst first:\n{fit_diagnostics(best.fit, best.cv, conditions, reference)}"
         )
     parts.append(f"## LOOP HISTORY\n{history_block(history)}")
     return system, "\n\n".join(parts)
@@ -287,13 +324,13 @@ def render_critique(
         domain=DOMAIN.format(n_choices=n_choices), format=CritiqueVerdict.instruction_format(),
         output_rules=OUTPUT_RULES,
     )
-    reference = min(leaderboard, key=lambda e: e.fit.bic) if leaderboard else None
+    reference = min(leaderboard, key=lambda e: e.score) if leaderboard else None
     tag = "ACCEPTED" if candidate.accepted else "REJECTED (not better than this loop's best)"
     parts = [
-        f"## CANDIDATE — BIC {candidate.fit.bic:.1f}, NLL {candidate.fit.nll:.1f}, "
-        f"wSSE {candidate.fit.evaluation.weighted_sse:.4f} — {tag}\n"
+        f"## CANDIDATE — held-out NLL {candidate.score:.1f}, BIC {candidate.fit.bic:.1f}, "
+        f"wSSE (full fit) {candidate.fit.evaluation.weighted_sse:.4f} — {tag}\n"
         f"Fitted parameters: {_params(candidate.fit)}\n\n{candidate.candidate.pretty_print()}",
-        f"## PER-CONDITION FIT, WORST FIRST\n{fit_diagnostics(candidate.fit, conditions, reference)}",
+        f"## PER-CONDITION FIT, WORST FIRST\n{fit_diagnostics(candidate.fit, candidate.cv, conditions, reference)}",
         f"## CORPUS\n{corpus_table(conditions)}",
         f"## LEADERBOARD\n{leaderboard_table(leaderboard)}",
         f"## LOOP HISTORY\n{history_block(history)}",

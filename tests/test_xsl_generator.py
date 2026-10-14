@@ -13,7 +13,7 @@ import pytest
 
 import main_xsl_offline
 from src.xsl.corpus import load_corpus
-from src.xsl.fitting import FitBudget, fit_theory
+from src.xsl.fitting import FitBudget, cross_validate_theory, fit_theory
 from src.xsl.generator import XSLTheoryGenerator
 from src.xsl.prompts import Entry
 from src.xsl.theory import XSLTheory
@@ -70,12 +70,24 @@ def conditions():
 @pytest.fixture(scope="module")
 def leaderboard(conditions):
     theory = XSLTheory.from_yaml("theories/xsl/baseline.yaml")
-    return [Entry(label="baseline", theory=theory, fit=fit_theory(theory, conditions, budget=BUDGET))]
+    return [Entry(label="baseline", theory=theory, fit=fit_theory(theory, conditions, budget=BUDGET),
+                  cv=cross_validate_theory(theory, conditions, k=2, budget=BUDGET))]
 
 
 def _generator(conditions, responses):
     client = FakeClient(responses)
-    return XSLTheoryGenerator(llm_client=client, conditions=conditions, budget=BUDGET), client
+    return XSLTheoryGenerator(llm_client=client, conditions=conditions, budget=BUDGET, cv_folds=2), client
+
+
+def _gate_is_cv(history) -> None:
+    """Each accepted candidate beat every earlier accepted one on held-out NLL."""
+    best = float("inf")
+    for it in history:
+        if it.candidate is None:
+            continue
+        assert it.cv is not None
+        assert it.accepted == (it.score < best)
+        best = min(best, it.score) if it.accepted else best
 
 
 def test_better_candidate_is_accepted_and_continue_stops(conditions, leaderboard, tmp_path) -> None:
@@ -86,6 +98,7 @@ def test_better_candidate_is_accepted_and_continue_stops(conditions, leaderboard
     result = gen.propose_theory(guide="g", leaderboard=leaderboard, max_iters=5, workspace=tmp_path)
     assert [it.accepted for it in result.history] == [True, True]
     assert result.best.candidate.name == "Counting"
+    _gate_is_cv(result.history)
     assert not client.responses  # stopped after the accepted 'continue'
     # the second proposal was shown the first candidate as the running best
     assert "CURRENT BEST CANDIDATE" in client.prompts[2] and "Uniform guessing" in client.prompts[2]
@@ -102,6 +115,7 @@ def test_worse_candidate_is_rejected_and_continue_is_ignored(conditions, leaderb
     result = gen.propose_theory(guide="g", leaderboard=leaderboard, max_iters=3)
     assert [it.accepted for it in result.history] == [True, False, False]
     assert result.best.candidate.name == "Counting"
+    _gate_is_cv(result.history)
     assert not client.responses
 
 
@@ -128,6 +142,9 @@ def test_leaderboard_persistence_round_trip(conditions, leaderboard, tmp_path) -
     loaded = main_xsl_offline.load(tmp_path, conditions)
     assert [e.label for e in loaded] == ["baseline"]
     assert loaded[0].fit.nll == pytest.approx(leaderboard[0].fit.nll, rel=1e-12)
+    assert loaded[0].cv.per_condition_nll == leaderboard[0].cv.per_condition_nll
+    assert loaded[0].score == leaderboard[0].score
+    assert "baseline" in (tmp_path / "cv.md").read_text()
     assert (tmp_path / "theories" / "baseline.yaml").exists()
     assert "baseline" in (tmp_path / "leaderboard.md").read_text()
 
@@ -144,3 +161,29 @@ def test_openrouter_client_for_closed_models(monkeypatch) -> None:
     args = main_xsl_offline.parse_args(["--llm_provider", "openrouter", "--llm_model", "deepseek/deepseek-v4-pro-0813"])
     open_weight = main_xsl_offline.make_llm_client(args).extra_body["provider"]
     assert open_weight["quantizations"] == ["fp8"] and open_weight["require_parameters"] is True
+
+
+def test_legacy_cv_json_is_picked_up(conditions, leaderboard, tmp_path) -> None:
+    # runs before per-entry CV kept it only in cv.json, keyed by condition label
+    cv = leaderboard[0].cv
+    main_xsl_offline.save(tmp_path, [Entry(label="baseline", theory=leaderboard[0].theory, fit=leaderboard[0].fit)])
+    (tmp_path / "cv.json").write_text(json.dumps([{
+        "label": "baseline", "heldout_nll": cv.heldout_nll, "heldout_weighted_sse": cv.heldout_weighted_sse,
+        "fold_params": cv.fold_params,
+        "per_condition_nll": dict(zip((c.label for c in conditions), cv.per_condition_nll)),
+    }]))
+    loaded = main_xsl_offline.load(tmp_path, conditions)
+    assert loaded[0].cv.per_condition_nll == cv.per_condition_nll
+
+
+def test_leaderboard_ranks_by_held_out_nll(conditions, leaderboard) -> None:
+    from dataclasses import replace
+
+    from src.xsl.prompts import leaderboard_table
+
+    base = leaderboard[0]
+    better_cv = replace(base.cv, heldout_nll=base.cv.heldout_nll - 1)
+    worse_bic = replace(base.fit, n_free=base.fit.n_free + 5)  # higher BIC, better CV
+    table = leaderboard_table([base, Entry(label="cv_winner", theory=base.theory, fit=worse_bic, cv=better_cv)])
+    rows = [line for line in table.splitlines() if line.startswith("| 1 ") or line.startswith("| 2 ")]
+    assert "cv_winner" in rows[0] and "baseline" in rows[1]
