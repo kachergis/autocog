@@ -160,7 +160,8 @@ def run_cv(run_dir: Path, entries: list[Entry], conditions: list[Condition], k: 
         cv = cross_validate(e.theory.learner(), e.theory.free_parameters, conditions,
                             fixed=e.theory.fixed_parameters, k=k, budget=budget)
         rows.append({"label": e.label, "name": e.theory.name, "heldout_nll": cv.heldout_nll,
-                     "heldout_weighted_sse": cv.heldout_weighted_sse, "fold_params": cv.fold_params})
+                     "heldout_weighted_sse": cv.heldout_weighted_sse, "fold_params": cv.fold_params,
+                     "per_condition_nll": dict(zip((c.label for c in conditions), cv.per_condition_nll))})
         print(f"[cv] {e.label}: held-out NLL {cv.heldout_nll:.1f}, wSSE {cv.heldout_weighted_sse:.4f}")
     rows.sort(key=lambda r: r["heldout_nll"])
     (run_dir / "cv.json").write_text(json.dumps(rows, indent=2))
