@@ -1,0 +1,296 @@
+"""Fit XSL theories to the human corpus at the group level.
+
+Objective: the multinomial negative log-likelihood of the human choice counts
+in each condition's `response_matrix`, summed over conditions.
+
+  * n-AFC conditions (no explicit test; every object is a choice): each
+    word's row of counts is multinomial over all objects, with the theory's
+    Luce choice probabilities.
+  * explicit-test conditions: each test trial is binomial, correct vs not.
+    This uses only the target's count, so it is unaffected by the two corpus
+    conditions (211, 214) whose recorded candidate lists do not contain every
+    object people chose.
+
+Predicted probabilities are mixed with a guessing rate `lapse` toward
+uniform over the choices. `lapse` is FITTED for every theory, as a nuisance
+parameter that counts toward k: with a fixed small lapse the likelihood is
+dominated by how a theory handles zeros (raw co-occurrence counting, which
+gives never-seen pairs probability 0, scores worse than uniform guessing at
+lapse = .001 but close to uniform-attention models at its best lapse of ~.3),
+not by its learning mechanism. Theories may not declare a parameter named
+`lapse`. The bakeoff's n_subj-weighted SSE is reported alongside for
+comparison with the xsl-bakeoff fits.
+
+The likelihood treats every choice as independent, which ignores
+between-subject variability and makes it overconfident. It is fine for
+ranking theories; judge whether two theories truly differ by
+cross-validation over conditions (`cross_validate`), not by NLL differences.
+"""
+
+from __future__ import annotations
+
+import math
+import time
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+
+import numpy as np
+from scipy.optimize import differential_evolution
+from scipy.special import gammaln, xlog1py, xlogy
+
+from src.xsl.corpus import Condition
+from src.xsl.scoring import Learner, predict_accuracy, predict_referent, sse
+
+LAPSE = "lapse"
+LAPSE_BOUNDS = (1e-3, 0.95)
+
+
+def choice_probabilities(m: np.ndarray, condition: Condition, d: float | None = None) -> np.ndarray:
+    """Luce choice distribution per item over every object column, shape (n_items, n_objects).
+
+    For explicit-test items the mass sits on the trial's candidates only.
+    """
+    n_objects = len(condition.objects)
+    if condition.test is None:
+        M = np.maximum(m, 0.0) ** (1.0 if d is None else d)
+        total = M.sum(axis=1, keepdims=True)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            return np.where(total > 0, M / total, 1.0 / n_objects)
+    out = np.zeros((len(condition.test), n_objects))
+    col = {o: j for j, o in enumerate(condition.objects)}
+    for i, (word, cands) in enumerate(zip(condition.test.words, condition.test.objects)):
+        probs = predict_referent(m, condition.words, condition.objects, word, cands)
+        for c, p in zip(cands, probs):
+            if c in col:
+                out[i, col[c]] += p
+    return out
+
+
+def condition_nll(m: np.ndarray, condition: Condition, d: float | None = None, lapse: float = 0.0) -> float:
+    """Negative log-likelihood of `condition`'s human choices under association matrix `m`."""
+    rm = condition.response_matrix
+    if rm is None:
+        raise ValueError(f"{condition.label} has no response matrix")
+    probs = choice_probabilities(m, condition, d)
+    counts = rm.counts
+    if condition.test is None:
+        p = (1 - lapse) * probs + lapse / probs.shape[1]
+        n = counts.sum(axis=1)
+        log_coef = gammaln(n + 1) - gammaln(counts + 1).sum(axis=1)
+        return float(-(log_coef + xlogy(counts, p).sum(axis=1)).sum())
+    col = {o: j for j, o in enumerate(condition.objects)}
+    targets = condition.test.correct or condition.test.words
+    nll = 0.0
+    for i, (target, cands) in enumerate(zip(targets, condition.test.objects)):
+        j = col[target]
+        p = (1 - lapse) * probs[i, j] + lapse / len(cands)
+        k, n = counts[i, j], counts[i].sum()
+        log_coef = gammaln(n + 1) - gammaln(k + 1) - gammaln(n - k + 1)
+        # xlogy / xlog1py: 0 * log(0) = 0, e.g. a single-candidate trial where p = 1
+        nll -= log_coef + xlogy(k, p) + xlog1py(n - k, -p)
+    return float(nll)
+
+
+@dataclass
+class Evaluation:
+    """A theory scored on a set of conditions at one parameter setting."""
+
+    params: dict[str, float]
+    nll: float
+    weighted_sse: float
+    per_condition_nll: list[float]
+    per_condition_sse: list[float]
+    per_condition_perf: list[np.ndarray]
+
+
+def total_choices(conditions: Sequence[Condition]) -> int:
+    return int(sum(c.response_matrix.counts.sum() for c in conditions))
+
+
+def n_choices_per_item(condition: Condition) -> np.ndarray:
+    """How many options each test item offers (all objects, or the m-AFC candidates)."""
+    if condition.test is None:
+        return np.full(len(condition.words), float(len(condition.objects)))
+    return np.array([float(len(c)) for c in condition.test.objects])
+
+
+def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Condition]) -> Evaluation:
+    """NLL, plus per-item accuracy and SSE with the guessing rate mixed in
+    ((1 - lapse) * p + lapse / n_choices), i.e. the accuracy the likelihood scores."""
+    nlls, sses, perfs = [], [], []
+    d = params.get("ch_dec")
+    lapse = params.get(LAPSE, 0.0)
+    for c in conditions:
+        m = learner(params, c.positional_trials, len(c.words), len(c.objects))
+        perf = (1 - lapse) * predict_accuracy(m, c, d=d) + lapse / n_choices_per_item(c)
+        perfs.append(perf)
+        nlls.append(condition_nll(m, c, d, lapse))
+        sses.append(sse(perf, c))
+    weights = np.array([c.n_subj for c in conditions], dtype=float)
+    return Evaluation(
+        params=dict(params),
+        nll=float(sum(nlls)),
+        weighted_sse=float((np.array(sses) * weights).sum() / weights.sum()),
+        per_condition_nll=nlls,
+        per_condition_sse=sses,
+        per_condition_perf=perfs,
+    )
+
+
+@dataclass
+class FitResult:
+    params: dict[str, float]
+    evaluation: Evaluation
+    n_free: int
+    n_choices: int
+    n_evals: int
+    seconds: float
+    at_bound: list[str] = field(default_factory=list)
+
+    @property
+    def nll(self) -> float:
+        return self.evaluation.nll
+
+    @property
+    def bic(self) -> float:
+        return 2 * self.nll + self.n_free * math.log(self.n_choices)
+
+    @property
+    def aic(self) -> float:
+        return 2 * self.nll + 2 * self.n_free
+
+
+@dataclass(frozen=True)
+class FitBudget:
+    """differential_evolution settings. Defaults are sized for the inner
+    critique loop (one fit per candidate); raise them for final fits."""
+
+    popsize: int = 10
+    maxiter: int = 40
+    tol: float = 1e-4
+    polish: bool = True
+    seed: int = 0
+
+
+def fit(
+    learner: Learner,
+    free: dict[str, tuple[float, float]],
+    conditions: Sequence[Condition],
+    *,
+    fixed: dict[str, float] | None = None,
+    budget: FitBudget = FitBudget(),
+    fit_lapse: bool = True,
+) -> FitResult:
+    """Minimise the summed NLL over `free` parameters with differential evolution.
+
+    With `fit_lapse` (the default) the guessing rate `lapse` is fitted too and
+    counts as a free parameter; otherwise it is taken from `fixed` (default 0).
+    """
+    fixed = dict(fixed or {})
+    free = dict(free)
+    if LAPSE in free or (fit_lapse and LAPSE in fixed):
+        raise ValueError(f"{LAPSE!r} is reserved for the fitted guessing rate")
+    if fit_lapse:
+        free[LAPSE] = LAPSE_BOUNDS
+    names = list(free)
+    t0 = time.perf_counter()
+    n_evals = 0
+
+    def objective(x: np.ndarray) -> float:
+        nonlocal n_evals
+        n_evals += 1
+        params = {**fixed, **dict(zip(names, map(float, x)))}
+        total = 0.0
+        d = params.get("ch_dec")
+        lapse = params.get(LAPSE, 0.0)
+        try:
+            for c in conditions:
+                m = learner(params, c.positional_trials, len(c.words), len(c.objects))
+                total += condition_nll(m, c, d, lapse)
+        except (ArithmeticError, ValueError, FloatingPointError):
+            return float("inf")
+        return total if math.isfinite(total) else float("inf")
+
+    if names:
+        with np.errstate(all="ignore"):
+            res = differential_evolution(
+                objective,
+                bounds=[free[n] for n in names],
+                popsize=budget.popsize,
+                maxiter=budget.maxiter,
+                tol=budget.tol,
+                polish=budget.polish,
+                seed=budget.seed,
+                init="sobol",
+            )
+        best = {n: float(v) for n, v in zip(names, res.x)}
+    else:
+        objective(np.array([]))
+        best = {}
+    params = {**fixed, **best}
+    at_bound = [
+        n for n, v in best.items()
+        if math.isclose(v, free[n][0], rel_tol=1e-3, abs_tol=1e-6)
+        or math.isclose(v, free[n][1], rel_tol=1e-3, abs_tol=1e-6)
+    ]
+    return FitResult(
+        params=params,
+        evaluation=evaluate(learner, params, conditions),
+        n_free=len(names),
+        n_choices=total_choices(conditions),
+        n_evals=n_evals,
+        seconds=time.perf_counter() - t0,
+        at_bound=at_bound,
+    )
+
+
+@dataclass
+class CVResult:
+    """k-fold cross-validation over conditions."""
+
+    heldout_nll: float                      # summed over all held-out conditions
+    heldout_weighted_sse: float
+    per_condition_nll: list[float]          # in corpus order, each from the fold that held it out
+    fold_params: list[dict[str, float]]
+
+
+def cross_validate(
+    learner: Learner,
+    free: dict[str, tuple[float, float]],
+    conditions: Sequence[Condition],
+    *,
+    fixed: dict[str, float] | None = None,
+    k: int = 5,
+    seed: int = 0,
+    budget: FitBudget = FitBudget(),
+    fit_lapse: bool = True,
+) -> CVResult:
+    """Fit on k-1 folds of conditions, score the held-out fold; repeat for every fold."""
+    n = len(conditions)
+    order = np.random.default_rng(seed).permutation(n)
+    folds = np.array_split(order, k)
+    per_nll = [math.nan] * n
+    per_sse = [math.nan] * n
+    fold_params = []
+    for held in folds:
+        held_set = set(held.tolist())
+        train = [conditions[i] for i in range(n) if i not in held_set]
+        result = fit(learner, free, train, fixed=fixed, budget=budget, fit_lapse=fit_lapse)
+        fold_params.append(result.params)
+        ev = evaluate(learner, result.params, [conditions[i] for i in held])
+        for i, nll_i, sse_i in zip(held, ev.per_condition_nll, ev.per_condition_sse):
+            per_nll[i] = nll_i
+            per_sse[i] = sse_i
+    weights = np.array([c.n_subj for c in conditions], dtype=float)
+    return CVResult(
+        heldout_nll=float(sum(per_nll)),
+        heldout_weighted_sse=float((np.array(per_sse) * weights).sum() / weights.sum()),
+        per_condition_nll=per_nll,
+        fold_params=fold_params,
+    )
+
+
+def fit_theory(theory, conditions: Sequence[Condition], *, budget: FitBudget = FitBudget()) -> FitResult:
+    """`fit` for an `XSLTheory`."""
+    return fit(theory.learner(), theory.free_parameters, conditions,
+               fixed=theory.fixed_parameters, budget=budget)

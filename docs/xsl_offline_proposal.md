@@ -60,6 +60,9 @@ retrospective one.
 | Question | Decision |
 |---|---|
 | Fit level | **Group.** Multinomial log-likelihood on each condition's `response_matrix` for the leaderboard and accept gates; `n_subj`-weighted SSE (the bakeoff objective) reported alongside. Significance judgements use condition-level CV, not the group likelihood (which treats choices as independent and is overconfident). |
+| Guessing | **A guessing rate `lapse` is fitted for every theory** (mixture with uniform choice at test, counted in k). With a fixed small lapse the likelihood ranks theories by how they handle zero associations, not by mechanism: at lapse = .001 raw co-occurrence counting scores worse than uniform guessing. |
+| m-AFC likelihood | Binomial on correct vs incorrect. Conditions 211 and 214 record choices of objects outside their stored candidate lists (4 and 175 choices), so a multinomial over candidates is not usable there; worth checking in XSLmodels. |
+| Accept gate | BIC on the full-corpus fit (one fit ≈ 1.5–3 min). k-fold CV over conditions is run for the leaderboard (`--cv`), not inside the critique loop, because it costs k fits. |
 | Incumbents | **Top-k by cross-validated fit in bakeoff v05** — see §4. |
 | Human-runnable designs | **Yes.** Designs are constrained to an online-feasible paradigm (§5); planned N = 50. |
 | Repo | **This fork, `src/xsl/`.** README §8 (Scope) gets updated; `tests/test_no_category_learning.py` only blocks category-learning imports and needs no change. |
@@ -220,6 +223,27 @@ results/xsl/
      36-word / 12-object synonym design with an explicit 12-AFC test.
 1. **Smallest end-to-end loop.** Improver / TheoryGenerator in mode B against
    the fitted corpus objective, no debate.
+
+   **Status: built, not yet run with an LLM (2026-10-14).** XSL-native rather
+   than the decision-making `TheoryGenerator`, whose loop is bound to
+   trial-by-trial `predict`/`policy` theories and scalar observations; it keeps
+   the same accept-gate contract and reuses the LLM clients and parsing.
+   - `src/xsl/theory.py` (`XSLTheory`: prose + `learn`, validated for shape,
+     sign, determinism and speed), `fitting.py` (group NLL, fitted `lapse`,
+     differential evolution, BIC, k-fold CV), `prompts.py`, `generator.py`,
+     `main_xsl_offline.py`; seeds `theories/xsl/{baseline,kachergis}.yaml`.
+   - Seed leaderboard (full corpus, N = 31,266 choices):
+
+     | theory | k | BIC | NLL | wSSE | parameters |
+     |---|---|---|---|---|---|
+     | kachergis | 4 | 32,391.7 | 16,175.2 | 0.567 | X = .241, B = 1.46, C = .973, lapse = .362 |
+     | baseline | 1 | 39,486.6 | 19,738.1 | 1.366 | lapse = .388 |
+
+     The likelihood fit puts B near 1.5, where the v05 SSE fit had B = 14.2:
+     the likelihood also scores which wrong object people choose.
+   - Tests cover closed-form likelihoods, parameter recovery (incl. `lapse`),
+     seed YAMLs = reference ports, the accept gate / retries / critic with a
+     fake LLM client, and leaderboard persistence.
 2. **Retrospective debate.** Seeds kachergis vs propose-but-verify / pursuit.
 3. **Prospective stream.** Design generator + validator, incumbent service,
    divergence-at-matched-fit acceptance, the queue.
