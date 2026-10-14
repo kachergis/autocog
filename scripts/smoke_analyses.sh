@@ -131,6 +131,10 @@ run fig3A/clean_vs_noisy_gt    -- $PY scripts/plot_recovery_clean_vs_noisy_gt.py
       --n-draws 3 --out "$OUT/f3a_cvn.png"
 run fig3B/plot_similarity      -- $PY scripts/plot_similarity.py \
       --root "$RECOVERY" --max-noise 0.75 --out-dir "$OUT/f3b_similarity"
+run fig3C/model_comparison     -- $PY scripts/plot_recovery_model_comparison.py \
+      --inputs "Gemini=$RECOVERY/analysis/per_model/recovery_long.csv" \
+               "Claude=results/recovery_anthropic/analysis/per_model/recovery_long.csv" \
+      --families single_cue anti_majority --out "$OUT/f3c_model_comparison"
 
 # ---------------------------------------------------------------- Figure 4 ---
 # Case study 1 (binary cues, seeds TTB+WADD) + generalisation to Hilbig 2014.
@@ -219,8 +223,6 @@ run si/jsonl_to_hilbig_exp     -- $PY scripts/jsonl_to_hilbig_exp.py \
 # --- analyses whose inputs or credentials are not available here --------------
 skip si/judge_similarity \
       "calls the Gemini LLM judge; needs a real API key. Its outputs (judge_similarity_{desc,joint}.csv) ARE committed under results/recovery/<family>/noise=*/, which is what plot_similarity reads."
-skip si/hilibig_battery_aggregate \
-      "aggregate_hilibig_battery.py + plot_hilibig_battery_{aggregate,correlation}.py consume per-run hilibig_battery outputs that are not committed; regenerate them with scripts/rerun_hilibig_battery.sh first."
 skip prereg/pipeline \
       "scripts/preregistration/{build,search,run_experiment,download_data,download_firebase,analyse,model_preference}.py drive live Firebase/Prolific data collection and need credentials + the raw per-participant drop, which is not committed. The frozen battery (battery.json) and the aggregated h1/h2/h3 CSVs that the paper reports ARE committed."
 
