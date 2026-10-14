@@ -30,6 +30,8 @@ from src.promptable import Promptable
 from src.xsl.corpus import Condition
 from src.xsl.scoring import Learner, predict_accuracy, run
 
+INDEX_SHUFFLE_SEED = 20261014
+
 _INTERVAL = re.compile(r"^\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*\]\s*$")
 
 
@@ -114,11 +116,26 @@ class XSLTheory(Promptable):
         return len(self.free_parameters)
 
     def learner(self) -> Learner:
+        """The theory's `learn`, shown each condition under shuffled indices.
+
+        In the corpus, word i's referent is object i (sorted order), so a
+        learner could score well just by favouring the matrix diagonal. The
+        wrapper relabels words and objects with a fixed pseudo-random
+        permutation before calling `learn` and maps the returned matrix back.
+        A theory that only uses co-occurrence is unaffected (up to
+        floating-point summation order); one that leans on index identity
+        loses that information.
+        """
         impl = self._learn_impl
 
         def learn(params: dict[str, Any], trials, n_words: int, n_objects: int) -> np.ndarray:
-            m = impl(params, [(w, o) for w, o in trials], n_words, n_objects)
-            return np.asarray(m, dtype=float)
+            rng = np.random.default_rng([INDEX_SHUFFLE_SEED, n_words, n_objects, len(trials)])
+            new_w, new_o = rng.permutation(n_words), rng.permutation(n_objects)
+            shown = [(new_w[w], new_o[o]) for w, o in trials]
+            m = np.asarray(impl(params, shown, n_words, n_objects), dtype=float)
+            if m.shape != (n_words, n_objects):
+                return m  # let the caller report the shape error
+            return m[np.ix_(new_w, new_o)]
 
         return learn
 

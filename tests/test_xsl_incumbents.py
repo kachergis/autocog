@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from src.xsl import incumbents, models, scoring
-from src.xsl.corpus import DATA_DIR, Condition, MAFCTest, load_corpus
+from src.xsl.corpus import DATA_DIR, Condition, MAFCTest, load_corpus, load_manifest
 
 ATOL = 1e-10
 
@@ -32,7 +32,23 @@ def test_interim_panel_is_exported_and_deterministic() -> None:
     assert every["uncfam_gamma"].sse_v05 < every["kachergis"].sse_v05
 
 
+def _export_is_current() -> bool:
+    return incumbents.pinned_commit() == load_manifest()["xslmodels_commit"]
+
+
 @needs_r
+def test_export_matches_pinned_library() -> None:
+    """data/xsl/ must come from the XSLmodels build the bridge runs; when
+    xsl-bakeoff re-pins, re-run scripts/xsl/export_corpus.R."""
+    assert _export_is_current(), (
+        f"data/xsl was exported from XSLmodels {load_manifest()['xslmodels_commit'][:7]} but the "
+        f"pinned library is {(incumbents.pinned_commit() or 'unknown')[:7]}; re-run "
+        "`Rscript scripts/xsl/export_corpus.R` once the v05 refit at that commit is complete"
+    )
+
+
+@needs_r
+@pytest.mark.skipif(not _export_is_current(), reason="export is stale; see test_export_matches_pinned_library")
 def test_bridge_reproduces_v05_predictions_on_corpus() -> None:
     corpus = load_corpus()
     every = incumbents.load_incumbents()

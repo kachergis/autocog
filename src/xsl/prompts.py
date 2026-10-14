@@ -135,6 +135,7 @@ Leaderboard theories are for inspiration only: do not resubmit one of them \
 or a cosmetic variant. A new mechanism that fits better is the goal.
 
 ## OUTPUT
+{output_rules}
 Return one JSON object with these fields:
 {format}
 """
@@ -149,9 +150,17 @@ promising revision; otherwise give one specific mechanistic change to try.
 
 {domain}
 ## OUTPUT
+{output_rules}
 Return one JSON object with these fields:
 {format}
 """
+
+# Sonnet 5.5 sometimes opened its reply with invented tool calls
+# (`<invoke name="bash">...`); once that ran on to the 128k-token output cap.
+OUTPUT_RULES = (
+    "You have no tools and cannot run code: do not write tool calls, XML tags or "
+    "`<invoke>` blocks. Reply with the JSON object only — no prose before or after it."
+)
 
 
 def _design_row(c: Condition) -> str:
@@ -241,7 +250,8 @@ def render_generation(
     n_choices: int,
 ) -> tuple[str, str]:
     system = GENERATOR_SYSTEM.format(
-        domain=DOMAIN.format(n_choices=n_choices), format=XSLTheory.instruction_format()
+        domain=DOMAIN.format(n_choices=n_choices), format=XSLTheory.instruction_format(),
+        output_rules=OUTPUT_RULES,
     )
     reference = min(leaderboard, key=lambda e: e.fit.bic) if leaderboard else None
     parts = [
@@ -274,7 +284,8 @@ def render_critique(
     n_choices: int,
 ) -> tuple[str, str]:
     system = CRITIC_SYSTEM.format(
-        domain=DOMAIN.format(n_choices=n_choices), format=CritiqueVerdict.instruction_format()
+        domain=DOMAIN.format(n_choices=n_choices), format=CritiqueVerdict.instruction_format(),
+        output_rules=OUTPUT_RULES,
     )
     reference = min(leaderboard, key=lambda e: e.fit.bic) if leaderboard else None
     tag = "ACCEPTED" if candidate.accepted else "REJECTED (not better than this loop's best)"

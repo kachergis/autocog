@@ -46,8 +46,9 @@ def test_seed_yamls_match_reference_ports(corpus) -> None:
     for name, port in [("kachergis", models.uncfam), ("baseline", models.baseline)]:
         theory = XSLTheory.from_yaml(f"theories/xsl/{name}.yaml")
         for c in corpus:
-            np.testing.assert_array_equal(scoring.run(theory.learner(), params, c)[1],
-                                          scoring.run(port, params, c)[1])
+            # learner() shuffles indices, which can change float summation order
+            np.testing.assert_allclose(scoring.run(theory.learner(), params, c)[1],
+                                       scoring.run(port, params, c)[1], rtol=1e-12, atol=1e-15)
 
 
 @pytest.mark.parametrize("source,match", [
@@ -63,6 +64,19 @@ def test_check_rejects_bad_learners(corpus, source, match) -> None:
 def test_check_rejects_slow_learners(corpus) -> None:
     with pytest.raises(ValueError, match="fast enough"):
         XSLTheory.from_yaml("theories/xsl/kachergis.yaml").check(corpus, max_seconds=1e-6)
+
+
+def test_index_identity_cannot_be_exploited(corpus) -> None:
+    # "word i goes with object i" is true of the corpus's sorted labels; a
+    # learner that bets on it must not beat chance once indices are shuffled
+    cheat = XSLTheory(theory="t", learn=(
+        "def learn(params, trials, n_words, n_objects):\n"
+        "    return np.eye(n_words, n_objects) + 1e-3\n"))
+    c = next(c for c in corpus if c.test is None)
+    perf, _ = scoring.run(cheat.learner(), {}, c)
+    unshuffled, _ = scoring.run(cheat._learn_impl, {}, c)
+    assert unshuffled.mean() > 0.9
+    assert perf.mean() < 0.2
 
 
 def test_learn_must_be_defined() -> None:

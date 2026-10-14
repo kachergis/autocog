@@ -104,6 +104,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--max_iters", type=int, default=5, help="propose/fit/critique iterations per round")
     p.add_argument("--llm_provider", default=None, help="override configs/default.yaml's provider")
     p.add_argument("--llm_model", default=None)
+    p.add_argument("--max_output_tokens", type=int, default=32_000,
+                   help="cap on output (incl. reasoning) tokens per LLM call; bounds the cost of a runaway reply")
     p.add_argument("--reasoning_effort", default="high",
                    help="OpenRouter reasoning effort; reasoning tokens dominate cost ('max' can use 100k+ per call)")
     p.add_argument("--config", type=Path, default=ROOT / "configs/default.yaml")
@@ -141,6 +143,7 @@ def make_llm_client(args: argparse.Namespace):
     if llm.provider == "openrouter" and llm.model.startswith(CLOSED_MODEL_VENDORS):
         client.extra_body["provider"].pop("quantizations", None)
         client.extra_body["provider"]["require_parameters"] = False
+    client.max_tokens = min(client.max_tokens, args.max_output_tokens)
     return client
 
 

@@ -86,6 +86,13 @@ def default_rlib() -> Path:
     return Path(env) if env else REPO_ROOT.parent / "xsl-bakeoff" / "fits" / "v05" / "Rlib"
 
 
+def pinned_commit(rlib: Path | None = None) -> str | None:
+    """XSLmodels commit installed in the pinned library (xsl-bakeoff records it
+    in fits/v05/XSLMODELS_COMMIT next to Rlib), or None if unknown."""
+    path = (rlib or default_rlib()).parent / "XSLMODELS_COMMIT"
+    return path.read_text().strip() if path.exists() else None
+
+
 def _numpy_scalar(o: Any) -> Any:
     """Designs built with NumPy (e.g. by a generated design function) carry
     numpy scalars as labels; write them as plain JSON numbers."""
