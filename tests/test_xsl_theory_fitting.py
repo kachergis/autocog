@@ -100,7 +100,33 @@ def test_nafc_nll_is_multinomial_with_lapse() -> None:
     lapse = 0.2
     p = (1 - lapse) * (m / m.sum(axis=1, keepdims=True)) + lapse / 2
     expected = -sum(multinomial.logpmf(counts[i], n=counts[i].sum(), p=p[i]) for i in range(2))
-    assert fitting.condition_nll(m, c, lapse=lapse) == pytest.approx(expected, rel=1e-12)
+    assert fitting.condition_nll(m, c, lapse=lapse, objective="multinomial") == pytest.approx(expected, rel=1e-12)
+
+
+def test_nafc_nll_is_binomial_on_accuracy_by_default() -> None:
+    # word i's referent is object i: only the diagonal counts, out of each row's total
+    counts = np.array([[7.0, 3.0], [2.0, 8.0]])
+    m = np.array([[3.0, 1.0], [1.0, 1.0]])
+    lapse = 0.2
+    p = (1 - lapse) * np.array([0.75, 0.5]) + lapse / 2
+    expected = -(binom.logpmf(7, 10, p[0]) + binom.logpmf(8, 10, p[1]))
+    assert fitting.condition_nll(m, _toy(counts), lapse=lapse) == pytest.approx(expected, rel=1e-12)
+    # moving errors between wrong objects changes the multinomial NLL, not the binomial one
+    wider = _toy(np.array([[7.0, 3.0, 0.0], [2.0, 8.0, 0.0]]))
+    wider = Condition(label="w", condition="", train_words=((1, 2),), train_objects=((1, 2, 3),),
+                      accuracy=np.zeros(2), n_subj=10, response_matrix=replace(
+                          wider.response_matrix, objects=("1", "2", "3")))
+    moved = replace(wider, response_matrix=replace(wider.response_matrix,
+                                                   counts=np.array([[7.0, 0.0, 3.0], [0.0, 8.0, 2.0]])))
+    m3 = np.array([[3.0, 1.0, 0.5], [1.0, 1.0, 0.5]])
+    assert fitting.condition_nll(m3, wider) == pytest.approx(fitting.condition_nll(m3, moved), rel=1e-12)
+    assert fitting.condition_nll(m3, wider, objective="multinomial") != pytest.approx(
+        fitting.condition_nll(m3, moved, objective="multinomial"), rel=1e-6)
+
+
+def test_unknown_objective_rejected() -> None:
+    with pytest.raises(ValueError):
+        fitting.FitBudget(objective="sse")
 
 
 def test_mafc_nll_is_binomial_on_target_count() -> None:
@@ -189,7 +215,8 @@ def test_fit_recovers_generating_parameters(corpus) -> None:
         synthetic.append(replace(c, response_matrix=replace(c.response_matrix, counts=n * p)))
     assert len(synthetic) >= 6
     r = fitting.fit(models.uncfam, {"X": (0.01, 1.0), "B": (0.1, 10.0)}, synthetic,
-                    fixed={"C": truth["C"]}, budget=fitting.FitBudget(popsize=8, maxiter=30))
+                    fixed={"C": truth["C"]},
+                    budget=fitting.FitBudget(popsize=8, maxiter=30, objective="multinomial"))
     assert r.params["X"] == pytest.approx(truth["X"], rel=1e-3)
     assert r.params["B"] == pytest.approx(truth["B"], rel=1e-3)
     assert r.params["lapse"] == pytest.approx(truth["lapse"], rel=1e-3)

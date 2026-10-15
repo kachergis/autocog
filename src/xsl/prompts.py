@@ -120,9 +120,7 @@ yourself, and do not model random guessing inside `learn`.
 ## HOW THEORIES ARE SCORED
 Each theory is FITTED to all 47 conditions at once (one parameter set for \
 everyone) by differential evolution, minimising the negative log-likelihood \
-(NLL) of every human test choice: multinomial over objects for n-AFC tests \
-(so WHICH wrong object people choose matters, not just accuracy), binomial \
-correct/incorrect for m-AFC tests.
+(NLL) of the human test responses: {objective_text}
 
 The SCORE is the held-out NLL from 5-fold cross-validation over conditions: \
 the theory is fitted to four fifths of the conditions and must predict the \
@@ -179,6 +177,23 @@ OUTPUT_RULES = (
     "You have no tools and cannot run code: do not write tool calls, XML tags or "
     "`<invoke>` blocks. Reply with the JSON object only — no prose before or after it."
 )
+
+
+OBJECTIVE_TEXT = {
+    "binomial": (
+        "for every test item, how many people chose the correct referent out of "
+        "how many were tested (binomial). The score is about item-level ACCURACY: "
+        "which wrong object people chose does not count."
+    ),
+    "multinomial": (
+        "multinomial over objects for n-AFC tests (so WHICH wrong object people "
+        "choose matters, not just accuracy), binomial correct/incorrect for m-AFC tests."
+    ),
+}
+
+
+def domain_text(n_choices: int, objective: str) -> str:
+    return DOMAIN.format(n_choices=n_choices, objective_text=OBJECTIVE_TEXT[objective])
 
 
 def _design_row(c: Condition) -> str:
@@ -284,9 +299,10 @@ def render_generation(
     best: Iteration | None,
     history: Sequence[Iteration],
     n_choices: int,
+    objective: str = "binomial",
 ) -> tuple[str, str]:
     system = GENERATOR_SYSTEM.format(
-        domain=DOMAIN.format(n_choices=n_choices), format=XSLTheory.instruction_format(),
+        domain=domain_text(n_choices, objective), format=XSLTheory.instruction_format(),
         output_rules=OUTPUT_RULES,
     )
     reference = min(leaderboard, key=lambda e: e.score) if leaderboard else None
@@ -319,9 +335,10 @@ def render_critique(
     candidate: Iteration,
     history: Sequence[Iteration],
     n_choices: int,
+    objective: str = "binomial",
 ) -> tuple[str, str]:
     system = CRITIC_SYSTEM.format(
-        domain=DOMAIN.format(n_choices=n_choices), format=CritiqueVerdict.instruction_format(),
+        domain=domain_text(n_choices, objective), format=CritiqueVerdict.instruction_format(),
         output_rules=OUTPUT_RULES,
     )
     reference = min(leaderboard, key=lambda e: e.score) if leaderboard else None

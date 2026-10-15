@@ -121,6 +121,7 @@ class XSLTheoryGenerator:
             system, user = render_generation(
                 conditions=self.conditions, leaderboard=leaderboard, guide=guide,
                 best=best, history=history, n_choices=self.n_choices,
+                objective=self.budget.objective,
             )
             theory, error = self._propose(system, user, workspace, crit)
             if theory is None:
@@ -145,6 +146,7 @@ class XSLTheoryGenerator:
             c_system, c_user = render_critique(
                 conditions=self.conditions, leaderboard=leaderboard, candidate=it,
                 history=history, n_choices=self.n_choices,
+                objective=self.budget.objective,
             )
             try:
                 it.critique = parse_reply(

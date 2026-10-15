@@ -194,3 +194,23 @@ def test_add_theories_skips_duplicate_labels(conditions) -> None:
     entries: list = []
     main_xsl_offline.add_theories(entries, [("baseline", theory), ("baseline", theory)], conditions, BUDGET)
     assert [e.label for e in entries] == ["baseline"]
+
+
+def test_loading_under_a_different_objective_fails(conditions, leaderboard, tmp_path) -> None:
+    main_xsl_offline.save(tmp_path, leaderboard)  # fitted with the default (binomial) objective
+    with pytest.raises(ValueError, match="binomial objective"):
+        main_xsl_offline.load(tmp_path, conditions, "multinomial")
+    # runs from before the objective was recorded were multinomial
+    rows = json.loads((tmp_path / "leaderboard.json").read_text())
+    for r in rows:
+        del r["objective"]
+    (tmp_path / "leaderboard.json").write_text(json.dumps(rows))
+    with pytest.raises(ValueError, match="multinomial objective"):
+        main_xsl_offline.load(tmp_path, conditions, "binomial")
+
+
+def test_prompt_describes_the_objective() -> None:
+    from src.xsl.prompts import domain_text
+
+    assert "ACCURACY" in domain_text(100, "binomial")
+    assert "WHICH wrong object" in domain_text(100, "multinomial")

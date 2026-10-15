@@ -1,15 +1,23 @@
 """Fit XSL theories to the human corpus at the group level.
 
-Objective: the multinomial negative log-likelihood of the human choice counts
-in each condition's `response_matrix`, summed over conditions.
+Objective: a negative log-likelihood of the human test responses in each
+condition's `response_matrix`, summed over conditions. Two are available
+(`FitBudget.objective`):
 
-  * n-AFC conditions (no explicit test; every object is a choice): each
-    word's row of counts is multinomial over all objects, with the theory's
-    Luce choice probabilities.
-  * explicit-test conditions: each test trial is binomial, correct vs not.
-    This uses only the target's count, so it is unaffected by the two corpus
-    conditions (211, 214) whose recorded candidate lists do not contain every
-    object people chose.
+  * "binomial" (default, the primary score): every test item is binomial —
+    how many people chose the correct referent, out of how many were tested —
+    under the theory's predicted accuracy. This scores item-level accuracy,
+    weighting each item by its sample size.
+  * "multinomial": n-AFC items (no explicit test; every object is a choice)
+    are multinomial over all objects, so WHICH wrong object people chose also
+    counts; explicit-test items stay binomial. For n-AFC tests 71-80% of this
+    NLL is the which-wrong-object part, so fitting it trades item-level
+    accuracy for confusion structure (e.g. kachergis fitted this way predicts
+    .41 on the hardest conditions, where people score .16). Kept as a
+    diagnostic.
+
+Explicit-test items use only the target's count, so they are unaffected by
+any mismatch between recorded candidate lists and the objects people chose.
 
 Predicted probabilities are mixed with a guessing rate `lapse` toward
 uniform over the choices. `lapse` is FITTED for every theory, as a nuisance
@@ -43,6 +51,7 @@ from src.xsl.scoring import Learner, predict_accuracy, predict_referent, sse
 
 LAPSE = "lapse"
 LAPSE_BOUNDS = (1e-3, 0.95)
+OBJECTIVES = ("binomial", "multinomial")
 
 
 def choice_probabilities(m: np.ndarray, condition: Condition, d: float | None = None) -> np.ndarray:
@@ -66,29 +75,38 @@ def choice_probabilities(m: np.ndarray, condition: Condition, d: float | None = 
     return out
 
 
-def condition_nll(m: np.ndarray, condition: Condition, d: float | None = None, lapse: float = 0.0) -> float:
-    """Negative log-likelihood of `condition`'s human choices under association matrix `m`."""
+def _binomial_nll(k: np.ndarray, n: np.ndarray, p: np.ndarray) -> float:
+    log_coef = gammaln(n + 1) - gammaln(k + 1) - gammaln(n - k + 1)
+    # xlogy / xlog1py: 0 * log(0) = 0, e.g. a single-candidate trial where p = 1
+    return float(-(log_coef + xlogy(k, p) + xlog1py(n - k, -p)).sum())
+
+
+def condition_nll(m: np.ndarray, condition: Condition, d: float | None = None, lapse: float = 0.0,
+                  objective: str = "binomial") -> float:
+    """Negative log-likelihood of `condition`'s human test responses under association matrix `m`."""
+    if objective not in OBJECTIVES:
+        raise ValueError(f"objective must be one of {OBJECTIVES}, got {objective!r}")
     rm = condition.response_matrix
     if rm is None:
         raise ValueError(f"{condition.label} has no response matrix")
     probs = choice_probabilities(m, condition, d)
     counts = rm.counts
+    n = counts.sum(axis=1)
     if condition.test is None:
         p = (1 - lapse) * probs + lapse / probs.shape[1]
-        n = counts.sum(axis=1)
-        log_coef = gammaln(n + 1) - gammaln(counts + 1).sum(axis=1)
-        return float(-(log_coef + xlogy(counts, p).sum(axis=1)).sum())
+        if objective == "multinomial":
+            log_coef = gammaln(n + 1) - gammaln(counts + 1).sum(axis=1)
+            return float(-(log_coef + xlogy(counts, p).sum(axis=1)).sum())
+        # word i's correct referent is object i (sorted order), as in get_perf
+        items = np.arange(len(condition.words))
+        return _binomial_nll(counts[items, items], n, p[items, items])
     col = {o: j for j, o in enumerate(condition.objects)}
     targets = condition.test.correct or condition.test.words
-    nll = 0.0
-    for i, (target, cands) in enumerate(zip(targets, condition.test.objects)):
-        j = col[target]
-        p = (1 - lapse) * probs[i, j] + lapse / len(cands)
-        k, n = counts[i, j], counts[i].sum()
-        log_coef = gammaln(n + 1) - gammaln(k + 1) - gammaln(n - k + 1)
-        # xlogy / xlog1py: 0 * log(0) = 0, e.g. a single-candidate trial where p = 1
-        nll -= log_coef + xlogy(k, p) + xlog1py(n - k, -p)
-    return float(nll)
+    j = np.array([col[t] for t in targets])
+    items = np.arange(len(targets))
+    k_cands = np.array([float(len(c)) for c in condition.test.objects])
+    p = (1 - lapse) * probs[items, j] + lapse / k_cands
+    return _binomial_nll(counts[items, j], n, p)
 
 
 @dataclass
@@ -101,6 +119,8 @@ class Evaluation:
     per_condition_nll: list[float]
     per_condition_sse: list[float]
     per_condition_perf: list[np.ndarray]
+    objective: str = "binomial"
+    other_nll: dict[str, float] = field(default_factory=dict)  # total NLL under the other objective(s)
 
 
 def total_choices(conditions: Sequence[Condition]) -> int:
@@ -114,17 +134,22 @@ def n_choices_per_item(condition: Condition) -> np.ndarray:
     return np.array([float(len(c)) for c in condition.test.objects])
 
 
-def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Condition]) -> Evaluation:
-    """NLL, plus per-item accuracy and SSE with the guessing rate mixed in
+def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Condition],
+             objective: str = "binomial") -> Evaluation:
+    """NLL under `objective` (and, for reference, the other objectives), plus
+    per-item accuracy and SSE with the guessing rate mixed in
     ((1 - lapse) * p + lapse / n_choices), i.e. the accuracy the likelihood scores."""
     nlls, sses, perfs = [], [], []
+    others = {o: 0.0 for o in OBJECTIVES if o != objective}
     d = params.get("ch_dec")
     lapse = params.get(LAPSE, 0.0)
     for c in conditions:
         m = learner(params, c.positional_trials, len(c.words), len(c.objects))
         perf = (1 - lapse) * predict_accuracy(m, c, d=d) + lapse / n_choices_per_item(c)
         perfs.append(perf)
-        nlls.append(condition_nll(m, c, d, lapse))
+        nlls.append(condition_nll(m, c, d, lapse, objective))
+        for o in others:
+            others[o] += condition_nll(m, c, d, lapse, o)
         sses.append(sse(perf, c))
     weights = np.array([c.n_subj for c in conditions], dtype=float)
     return Evaluation(
@@ -134,6 +159,8 @@ def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Co
         per_condition_nll=nlls,
         per_condition_sse=sses,
         per_condition_perf=perfs,
+        objective=objective,
+        other_nll=others,
     )
 
 
@@ -162,11 +189,12 @@ class FitResult:
 
 @dataclass(frozen=True)
 class FitBudget:
-    """differential_evolution settings. Defaults are sized for the inner
-    critique loop (one fit per candidate); raise them for final fits.
-
-    `lapse_max` is the upper bound of the fitted guessing rate (lower it for
-    sensitivity checks)."""
+    """Fitting settings: differential_evolution's budget (defaults sized for
+    the inner critique loop; raise them for final fits), the upper bound of
+    the fitted guessing rate (`lapse_max`, lowered for sensitivity checks),
+    and the likelihood being minimised (`objective`, see module docstring).
+    Kept in one object because it travels to every fit, including CV worker
+    processes."""
 
     popsize: int = 10
     maxiter: int = 40
@@ -174,6 +202,11 @@ class FitBudget:
     polish: bool = True
     seed: int = 0
     lapse_max: float = LAPSE_BOUNDS[1]
+    objective: str = "binomial"
+
+    def __post_init__(self) -> None:
+        if self.objective not in OBJECTIVES:
+            raise ValueError(f"objective must be one of {OBJECTIVES}, got {self.objective!r}")
 
 
 def fit(
@@ -210,7 +243,7 @@ def fit(
         try:
             for c in conditions:
                 m = learner(params, c.positional_trials, len(c.words), len(c.objects))
-                total += condition_nll(m, c, d, lapse)
+                total += condition_nll(m, c, d, lapse, budget.objective)
         except (ArithmeticError, ValueError, FloatingPointError):
             return float("inf")
         return total if math.isfinite(total) else float("inf")
@@ -239,7 +272,7 @@ def fit(
     ]
     return FitResult(
         params=params,
-        evaluation=evaluate(learner, params, conditions),
+        evaluation=evaluate(learner, params, conditions, budget.objective),
         n_free=len(names),
         n_choices=total_choices(conditions),
         n_evals=n_evals,
@@ -268,7 +301,7 @@ def _fit_fold(learner: Learner, free, fixed, conditions, held, budget, fit_lapse
     held_set = set(held.tolist())
     train = [c for i, c in enumerate(conditions) if i not in held_set]
     result = fit(learner, free, train, fixed=fixed, budget=budget, fit_lapse=fit_lapse)
-    ev = evaluate(learner, result.params, [conditions[i] for i in held])
+    ev = evaluate(learner, result.params, [conditions[i] for i in held], budget.objective)
     return held, result.params, ev.per_condition_nll, ev.per_condition_sse
 
 

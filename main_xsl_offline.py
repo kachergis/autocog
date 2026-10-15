@@ -2,7 +2,8 @@
 
 No new data is collected and there is no debate yet: each round, an LLM
 theory generator proposes a new XSL theory (prose + `learn` function), every
-candidate is fitted to the XSLmodels corpus by group NLL and scored by
+candidate is fitted to the XSLmodels corpus by group NLL (by default the
+binomial likelihood of item-level accuracy; --objective) and scored by
 5-fold cross-validation over conditions (held-out NLL), and a critic steers
 the next revision. The best candidate of each round joins the leaderboard,
 which starts from the fitted seed theories.
@@ -35,7 +36,7 @@ if str(ROOT) not in sys.path:
 
 from src.xsl.corpus import Condition, load_corpus  # noqa: E402
 from src.xsl.fitting import (  # noqa: E402
-    CVResult, FitBudget, FitResult, cross_validate_theory, evaluate, fit_theory, total_choices,
+    OBJECTIVES, CVResult, FitBudget, FitResult, cross_validate_theory, evaluate, fit_theory, total_choices,
 )
 from src.xsl.generator import XSLTheoryGenerator  # noqa: E402
 from src.xsl.prompts import Entry, leaderboard_table  # noqa: E402
@@ -56,6 +57,7 @@ def _entry_json(e: Entry) -> dict:
     f = e.fit
     return {
         "label": e.label,
+        "objective": f.evaluation.objective,
         "theory": e.theory.model_dump(),
         "fit": {
             "params": f.params, "nll": f.nll, "bic": f.bic, "aic": f.aic,
@@ -64,6 +66,7 @@ def _entry_json(e: Entry) -> dict:
             "at_bound": f.at_bound,
             "per_condition_nll": f.evaluation.per_condition_nll,
             "per_condition_sse": f.evaluation.per_condition_sse,
+            "other_nll": f.evaluation.other_nll,
         },
         "cv": None if e.cv is None else _cv_json(e.cv),
     }
@@ -79,7 +82,14 @@ def _cv_from_json(d: dict) -> CVResult:
                     per_condition_nll=list(d["per_condition_nll"]), fold_params=d["fold_params"])
 
 
-def _entry_from_json(d: dict, conditions: list[Condition]) -> Entry:
+def _entry_from_json(d: dict, conditions: list[Condition], objective: str) -> Entry:
+    # entries written before the objective was recorded were all multinomial
+    saved = d.get("objective", "multinomial")
+    if saved != objective:
+        raise ValueError(
+            f"{d['label']} was scored with the {saved} objective but this run uses {objective}; "
+            f"pass --objective {saved}, or --import_from it into a fresh --out to refit"
+        )
     theory = XSLTheory(**d["theory"])
     f = d["fit"]
     return Entry(
@@ -87,7 +97,7 @@ def _entry_from_json(d: dict, conditions: list[Condition]) -> Entry:
         theory=theory,
         fit=FitResult(
             params=f["params"],
-            evaluation=evaluate(theory.learner(), f["params"], conditions),
+            evaluation=evaluate(theory.learner(), f["params"], conditions, objective),
             n_free=f["n_free"], n_choices=f["n_choices"], n_evals=f["n_evals"],
             seconds=f["seconds"], at_bound=f["at_bound"],
         ),
@@ -112,11 +122,11 @@ def save(run_dir: Path, entries: list[Entry]) -> None:
     (run_dir / "cv.md").write_text("\n".join(lines) + "\n")
 
 
-def load(run_dir: Path, conditions: list[Condition]) -> list[Entry]:
+def load(run_dir: Path, conditions: list[Condition], objective: str = "binomial") -> list[Entry]:
     path = run_dir / "leaderboard.json"
     if not path.exists():
         return []
-    entries = [_entry_from_json(d, conditions) for d in json.loads(path.read_text())]
+    entries = [_entry_from_json(d, conditions, objective) for d in json.loads(path.read_text())]
     # runs from before CV was stored per entry kept it only in cv.json (same
     # folds, seed and budget as now), with per-condition NLL keyed by label
     legacy = run_dir / "cv.json"
@@ -146,6 +156,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--guide", default=DEFAULT_GUIDE)
     p.add_argument("--popsize", type=int, default=FitBudget.popsize)
     p.add_argument("--maxiter", type=int, default=FitBudget.maxiter)
+    p.add_argument("--objective", choices=OBJECTIVES, default="binomial",
+                   help="likelihood to fit and score by (binomial = item-level accuracy)")
     p.add_argument("--lapse_max", type=float, default=FitBudget.lapse_max,
                    help="upper bound of the fitted guessing rate (lower it for sensitivity checks)")
     p.add_argument("--incumbents", action="store_true",
@@ -227,10 +239,11 @@ def ensure_cv(entries: list[Entry], conditions: list[Condition], *, k: int, budg
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    budget = FitBudget(popsize=args.popsize, maxiter=args.maxiter, lapse_max=args.lapse_max)
+    budget = FitBudget(popsize=args.popsize, maxiter=args.maxiter, lapse_max=args.lapse_max,
+                       objective=args.objective)
     conditions = load_corpus()
     run_dir: Path = args.out
-    entries = load(run_dir, conditions)
+    entries = load(run_dir, conditions, args.objective)
     add_theories(entries, theories_to_add(args), conditions, budget)
     save(run_dir, entries)
     ensure_cv(entries, conditions, k=args.cv_folds, budget=budget, workers=args.cv_workers, recompute=args.cv,
