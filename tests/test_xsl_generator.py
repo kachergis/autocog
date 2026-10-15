@@ -187,3 +187,10 @@ def test_leaderboard_ranks_by_held_out_nll(conditions, leaderboard) -> None:
     table = leaderboard_table([base, Entry(label="cv_winner", theory=base.theory, fit=worse_bic, cv=better_cv)])
     rows = [line for line in table.splitlines() if line.startswith("| 1 ") or line.startswith("| 2 ")]
     assert "cv_winner" in rows[0] and "baseline" in rows[1]
+
+
+def test_add_theories_skips_duplicate_labels(conditions) -> None:
+    theory = XSLTheory.from_yaml("theories/xsl/baseline.yaml")
+    entries: list = []
+    main_xsl_offline.add_theories(entries, [("baseline", theory), ("baseline", theory)], conditions, BUDGET)
+    assert [e.label for e in entries] == ["baseline"]

@@ -196,6 +196,7 @@ def add_theories(entries: list[Entry], theories: list[tuple[str, XSLTheory]], co
     for label, theory in theories:
         if label in have:
             continue
+        have.add(label)  # the seeds also appear in imported leaderboards
         fit = fit_theory(theory, conditions, budget=budget)
         print(f"[add] {label}: BIC {fit.bic:.1f} ({fit.seconds:.0f}s) params {fit.params}")
         entries.append(Entry(label=label, theory=theory, fit=fit))
