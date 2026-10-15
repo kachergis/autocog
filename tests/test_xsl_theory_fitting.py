@@ -222,3 +222,64 @@ def test_fit_recovers_generating_parameters(corpus) -> None:
     assert r.params["lapse"] == pytest.approx(truth["lapse"], rel=1e-3)
     assert r.params["C"] == truth["C"]
     assert math.isfinite(r.bic)
+
+
+# --- restarts, warm starts and parallel populations ----------------------------
+
+def test_picklable_objective_rebuilds_the_learner(corpus) -> None:
+    import pickle
+
+    theory = XSLTheory.from_yaml("theories/xsl/kachergis.yaml")
+    names = ["X", "B", "C", "lapse"]
+    direct = fitting._NLLObjective(corpus[:5], names, {}, "binomial", learner=theory.learner(),
+                                   theory_dump=theory.model_dump())
+    shipped = pickle.loads(pickle.dumps(direct))
+    assert shipped._learner is None  # the exec'd learner is not pickled
+    x = np.array([0.3, 2.0, 0.95, 0.2])
+    assert shipped(x) == direct(x)
+
+
+def test_warm_start_never_ends_worse_than_x0(corpus) -> None:
+    theory = XSLTheory.from_yaml("theories/xsl/kachergis.yaml")
+    conds = corpus[:6]
+    x0 = {"X": 0.3, "B": 1.5, "C": 0.97, "lapse": 0.3}
+    at_x0 = fitting.evaluate(theory.learner(), x0, conds).nll
+    tiny = fitting.FitBudget(popsize=2, maxiter=1, polish=False)
+    r = fitting.fit_theory(theory, conds, budget=tiny, x0=x0)
+    assert r.nll <= at_x0 + 1e-9
+
+
+def test_more_restarts_never_do_worse(corpus) -> None:
+    theory = XSLTheory.from_yaml("theories/xsl/kachergis.yaml")
+    conds = corpus[:6]
+    one = fitting.fit_theory(theory, conds, budget=fitting.FitBudget(popsize=3, maxiter=3, polish=False))
+    three = fitting.fit_theory(theory, conds,
+                               budget=fitting.FitBudget(popsize=3, maxiter=3, polish=False, restarts=3))
+    assert three.nll <= one.nll
+    assert three.n_evals > one.n_evals
+
+
+def test_parallel_population_matches_serial(corpus) -> None:
+    # updating="deferred" is used whenever workers > 1, so compare like with like
+    theory = XSLTheory.from_yaml("theories/xsl/kachergis.yaml")
+    conds = corpus[:4]
+    par = fitting.fit_theory(theory, conds,
+                             budget=fitting.FitBudget(popsize=3, maxiter=3, polish=False, workers=2))
+    assert math.isfinite(par.nll)
+    obj = fitting._NLLObjective(conds, ["X", "B", "C", "lapse"], {}, "binomial", learner=theory.learner())
+    assert par.nll == pytest.approx(obj([par.params[k] for k in ("X", "B", "C", "lapse")]), rel=1e-12)
+
+
+def test_parallel_fit_needs_the_theory_source(corpus) -> None:
+    with pytest.raises(ValueError, match="theory_dump"):
+        fitting.fit(models.baseline, {}, corpus[:2], budget=fitting.FitBudget(workers=2))
+
+
+def test_robust_refit_parses_bound_overrides() -> None:
+    import importlib
+
+    script = importlib.import_module("scripts.xsl.robust_refit")
+    assert script.parse_bounds(["xsl_09:s=[0.01, 4]", "xsl_09:kc=[0, 40]", "inc_fazly:beta=[2, 5e4]"]) == {
+        "xsl_09": {"s": "[0.01, 4]", "kc": "[0, 40]"}, "inc_fazly": {"beta": "[2, 5e4]"}}
+    with pytest.raises(ValueError):
+        script.parse_bounds(["xsl_09 s [0, 1]"])

@@ -203,10 +203,57 @@ class FitBudget:
     seed: int = 0
     lapse_max: float = LAPSE_BOUNDS[1]
     objective: str = "binomial"
+    restarts: int = 1   # independent DE runs (seeds seed, seed+1, ...); the best is kept
+    workers: int = 1    # processes evaluating each DE population (needs a theory, see fit)
 
     def __post_init__(self) -> None:
         if self.objective not in OBJECTIVES:
             raise ValueError(f"objective must be one of {OBJECTIVES}, got {self.objective!r}")
+
+
+class _NLLObjective:
+    """Summed NLL of `conditions` at a parameter vector.
+
+    A picklable callable so differential_evolution can score a population in
+    worker processes: exec'd learners cannot be pickled, so a worker rebuilds
+    the learner from the theory's source (`theory_dump`) on first use.
+    Failures and non-finite totals score +inf.
+    """
+
+    def __init__(self, conditions, names, fixed, objective, *, learner=None, theory_dump=None):
+        self.conditions = list(conditions)
+        self.names = list(names)
+        self.fixed = dict(fixed)
+        self.objective = objective
+        self.theory_dump = theory_dump
+        self._learner = learner
+
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        state["_learner"] = None
+        return state
+
+    def learner(self) -> Learner:
+        if self._learner is None:
+            from src.xsl.theory import XSLTheory
+
+            self._learner = XSLTheory(**self.theory_dump).learner()
+        return self._learner
+
+    def __call__(self, x) -> float:
+        params = {**self.fixed, **dict(zip(self.names, map(float, x)))}
+        learner = self.learner()
+        d = params.get("ch_dec")
+        lapse = params.get(LAPSE, 0.0)
+        total = 0.0
+        try:
+            with np.errstate(all="ignore"):
+                for c in self.conditions:
+                    m = learner(params, c.positional_trials, len(c.words), len(c.objects))
+                    total += condition_nll(m, c, d, lapse, self.objective)
+        except (ArithmeticError, ValueError, FloatingPointError):
+            return float("inf")
+        return total if math.isfinite(total) else float("inf")
 
 
 def fit(
@@ -217,11 +264,19 @@ def fit(
     fixed: dict[str, float] | None = None,
     budget: FitBudget = FitBudget(),
     fit_lapse: bool = True,
+    x0: dict[str, float] | None = None,
+    theory_dump: dict | None = None,
 ) -> FitResult:
     """Minimise the summed NLL over `free` parameters with differential evolution.
 
     With `fit_lapse` (the default) the guessing rate `lapse` is fitted too and
     counts as a free parameter; otherwise it is taken from `fixed` (default 0).
+
+    `budget.restarts` independent runs are made and the best is kept. `x0`
+    (e.g. a previous fit) is clipped into the bounds and seeded into the first
+    run's population, so that run never ends worse than `x0`. Parallel
+    population evaluation (`budget.workers > 1`) needs `theory_dump`, the
+    theory's `model_dump()`, so workers can rebuild the learner.
     """
     fixed = dict(fixed or {})
     free = dict(free)
@@ -230,40 +285,45 @@ def fit(
     if fit_lapse:
         free[LAPSE] = (LAPSE_BOUNDS[0], budget.lapse_max)
     names = list(free)
+    bounds = [free[n] for n in names]
     t0 = time.perf_counter()
-    n_evals = 0
+    objective = _NLLObjective(conditions, names, fixed, budget.objective,
+                              learner=learner, theory_dump=theory_dump)
 
-    def objective(x: np.ndarray) -> float:
-        nonlocal n_evals
-        n_evals += 1
-        params = {**fixed, **dict(zip(names, map(float, x)))}
-        total = 0.0
-        d = params.get("ch_dec")
-        lapse = params.get(LAPSE, 0.0)
-        try:
-            for c in conditions:
-                m = learner(params, c.positional_trials, len(c.words), len(c.objects))
-                total += condition_nll(m, c, d, lapse, budget.objective)
-        except (ArithmeticError, ValueError, FloatingPointError):
-            return float("inf")
-        return total if math.isfinite(total) else float("inf")
-
-    if names:
-        with np.errstate(all="ignore"):
-            res = differential_evolution(
-                objective,
-                bounds=[free[n] for n in names],
-                popsize=budget.popsize,
-                maxiter=budget.maxiter,
-                tol=budget.tol,
-                polish=budget.polish,
-                seed=budget.seed,
-                init="sobol",
-            )
-        best = {n: float(v) for n, v in zip(names, res.x)}
-    else:
+    if not names:
         objective(np.array([]))
-        best = {}
+        best, n_evals = {}, 1
+    else:
+        start = None
+        if x0 is not None:
+            start = np.array([min(max(float(x0.get(n, (lo + hi) / 2)), lo), hi)
+                              for n, (lo, hi) in zip(names, bounds)])
+        pool = None
+        if budget.workers > 1:
+            if theory_dump is None:
+                raise ValueError("parallel fitting (budget.workers > 1) needs theory_dump")
+            import multiprocessing
+
+            pool = multiprocessing.get_context("spawn").Pool(budget.workers)
+        try:
+            best_res, n_evals = None, 0
+            for r in range(max(1, budget.restarts)):
+                kwargs = dict(popsize=budget.popsize, maxiter=budget.maxiter, tol=budget.tol,
+                              polish=budget.polish, seed=budget.seed + r, init="sobol")
+                if r == 0 and start is not None:
+                    kwargs["x0"] = start
+                if pool is not None:
+                    kwargs.update(workers=pool.map, updating="deferred")
+                with np.errstate(all="ignore"):
+                    res = differential_evolution(objective, bounds=bounds, **kwargs)
+                n_evals += int(res.nfev)
+                if best_res is None or res.fun < best_res.fun:
+                    best_res = res
+        finally:
+            if pool is not None:
+                pool.close()
+                pool.join()
+        best = {n: float(v) for n, v in zip(names, best_res.x)}
     params = {**fixed, **best}
     at_bound = [
         n for n, v in best.items()
@@ -297,10 +357,11 @@ def cv_folds(n: int, k: int, seed: int) -> list[np.ndarray]:
     return np.array_split(np.random.default_rng(seed).permutation(n), min(k, n))
 
 
-def _fit_fold(learner: Learner, free, fixed, conditions, held, budget, fit_lapse):
+def _fit_fold(learner: Learner, free, fixed, conditions, held, budget, fit_lapse, x0=None, theory_dump=None):
     held_set = set(held.tolist())
     train = [c for i, c in enumerate(conditions) if i not in held_set]
-    result = fit(learner, free, train, fixed=fixed, budget=budget, fit_lapse=fit_lapse)
+    result = fit(learner, free, train, fixed=fixed, budget=budget, fit_lapse=fit_lapse,
+                 x0=x0, theory_dump=theory_dump)
     ev = evaluate(learner, result.params, [conditions[i] for i in held], budget.objective)
     return held, result.params, ev.per_condition_nll, ev.per_condition_sse
 
@@ -343,14 +404,14 @@ def cross_validate(
     ])
 
 
-def _theory_fold(theory_dump: dict, conditions, held, budget):
+def _theory_fold(theory_dump: dict, conditions, held, budget, x0=None):
     # runs in a worker process: rebuild the theory from its source there,
     # since exec'd learners cannot be pickled
     from src.xsl.theory import XSLTheory
 
     theory = XSLTheory(**theory_dump)
     return _fit_fold(theory.learner(), theory.free_parameters, theory.fixed_parameters,
-                     conditions, held, budget, True)
+                     conditions, held, budget, True, x0)
 
 
 def cross_validate_theory(
@@ -361,26 +422,35 @@ def cross_validate_theory(
     seed: int = 0,
     budget: FitBudget = FitBudget(),
     workers: int = 1,
+    x0: dict[str, float] | None = None,
 ) -> CVResult:
-    """`cross_validate` for an `XSLTheory`, with folds fitted in `workers` processes."""
+    """`cross_validate` for an `XSLTheory`.
+
+    Parallelism is either across folds (`workers` processes, one fold each)
+    or, when `budget.workers > 1`, within each fit (folds then run one after
+    another, each fit scoring its populations in `budget.workers` processes).
+    `x0` (e.g. the full-corpus fit) warm-starts every fold.
+    """
     conditions = list(conditions)
     folds = cv_folds(len(conditions), k, seed)
-    if workers <= 1:
+    dump = theory.model_dump()
+    if workers <= 1 or budget.workers > 1:
         return _assemble_cv(conditions, [
             _fit_fold(theory.learner(), theory.free_parameters, theory.fixed_parameters,
-                      conditions, held, budget, True)
+                      conditions, held, budget, True, x0, dump)
             for held in folds
         ])
     from concurrent.futures import ProcessPoolExecutor
 
-    dump = theory.model_dump()
     n_folds = len(folds)
     with ProcessPoolExecutor(max_workers=min(workers, n_folds)) as pool:
-        results = list(pool.map(_theory_fold, [dump] * n_folds, [conditions] * n_folds, folds, [budget] * n_folds))
+        results = list(pool.map(_theory_fold, [dump] * n_folds, [conditions] * n_folds, folds,
+                                [budget] * n_folds, [x0] * n_folds))
     return _assemble_cv(conditions, results)
 
 
-def fit_theory(theory, conditions: Sequence[Condition], *, budget: FitBudget = FitBudget()) -> FitResult:
+def fit_theory(theory, conditions: Sequence[Condition], *, budget: FitBudget = FitBudget(),
+               x0: dict[str, float] | None = None) -> FitResult:
     """`fit` for an `XSLTheory`."""
     return fit(theory.learner(), theory.free_parameters, conditions,
-               fixed=theory.fixed_parameters, budget=budget)
+               fixed=theory.fixed_parameters, budget=budget, x0=x0, theory_dump=theory.model_dump())
