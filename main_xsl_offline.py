@@ -42,6 +42,7 @@ from src.xsl.prompts import Entry, leaderboard_table  # noqa: E402
 from src.xsl.theory import XSLTheory  # noqa: E402
 
 SEEDS = (ROOT / "theories/xsl/baseline.yaml", ROOT / "theories/xsl/kachergis.yaml")
+INCUMBENTS = tuple(sorted((ROOT / "theories/xsl/incumbents").glob("*.yaml")))
 DEFAULT_GUIDE = (
     "Propose a theory of cross-situational word learning that achieves a lower held-out NLL "
     "than every theory on the leaderboard. Study which conditions the best theory predicts worst "
@@ -145,6 +146,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--guide", default=DEFAULT_GUIDE)
     p.add_argument("--popsize", type=int, default=FitBudget.popsize)
     p.add_argument("--maxiter", type=int, default=FitBudget.maxiter)
+    p.add_argument("--lapse_max", type=float, default=FitBudget.lapse_max,
+                   help="upper bound of the fitted guessing rate (lower it for sensitivity checks)")
+    p.add_argument("--incumbents", action="store_true",
+                   help="add the xsl-bakeoff incumbent ports (theories/xsl/incumbents/, labelled inc_*)")
+    p.add_argument("--import_from", type=Path, default=None,
+                   help="leaderboard.json of another run: refit and cross-validate its theories here")
+    p.add_argument("--import_labels", nargs="*", default=None, help="with --import_from: only these labels")
     p.add_argument("--cv", action="store_true", help="recompute the CV of every leaderboard theory at the end")
     p.add_argument("--cv_folds", type=int, default=5)
     p.add_argument("--cv_workers", type=int, default=3, help="processes for fitting CV folds in parallel")
@@ -181,35 +189,51 @@ def make_llm_client(args: argparse.Namespace):
     return client
 
 
-def seed_leaderboard(conditions: list[Condition], budget: FitBudget) -> list[Entry]:
-    entries = []
-    for path in SEEDS:
-        theory = XSLTheory.from_yaml(path)
+def add_theories(entries: list[Entry], theories: list[tuple[str, XSLTheory]], conditions: list[Condition],
+                 budget: FitBudget) -> None:
+    """Fit and append each (label, theory) not already on the leaderboard (CV comes from ensure_cv)."""
+    have = {e.label for e in entries}
+    for label, theory in theories:
+        if label in have:
+            continue
         fit = fit_theory(theory, conditions, budget=budget)
-        print(f"[seed] {path.stem}: BIC {fit.bic:.1f} ({fit.seconds:.0f}s) params {fit.params}")
-        entries.append(Entry(label=path.stem, theory=theory, fit=fit))
-    return entries
+        print(f"[add] {label}: BIC {fit.bic:.1f} ({fit.seconds:.0f}s) params {fit.params}")
+        entries.append(Entry(label=label, theory=theory, fit=fit))
+
+
+def theories_to_add(args: argparse.Namespace) -> list[tuple[str, XSLTheory]]:
+    out = [(p.stem, XSLTheory.from_yaml(p)) for p in SEEDS]
+    if args.incumbents:
+        out += [(f"inc_{p.stem}", XSLTheory.from_yaml(p)) for p in INCUMBENTS]
+    if args.import_from is not None:
+        for d in json.loads(Path(args.import_from).read_text()):
+            if args.import_labels is None or d["label"] in args.import_labels:
+                out.append((d["label"], XSLTheory(**d["theory"])))
+    return out
 
 
 def ensure_cv(entries: list[Entry], conditions: list[Condition], *, k: int, budget: FitBudget,
-              workers: int, recompute: bool = False) -> None:
-    """Cross-validate every entry that has no CV yet (or all, with `recompute`)."""
+              workers: int, recompute: bool = False, on_done=None) -> None:
+    """Cross-validate every entry that has no CV yet (or all, with `recompute`);
+    `on_done()` runs after each one (e.g. to save progress)."""
     for e in entries:
         if e.cv is None or recompute:
             e.cv = cross_validate_theory(e.theory, conditions, k=k, budget=budget, workers=workers)
             print(f"[cv] {e.label}: held-out NLL {e.cv.heldout_nll:.1f}, wSSE {e.cv.heldout_weighted_sse:.4f}")
+            if on_done is not None:
+                on_done()
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    budget = FitBudget(popsize=args.popsize, maxiter=args.maxiter)
+    budget = FitBudget(popsize=args.popsize, maxiter=args.maxiter, lapse_max=args.lapse_max)
     conditions = load_corpus()
     run_dir: Path = args.out
     entries = load(run_dir, conditions)
-    if not entries:
-        entries = seed_leaderboard(conditions, budget)
-    ensure_cv(entries, conditions, k=args.cv_folds, budget=budget, workers=args.cv_workers, recompute=args.cv)
+    add_theories(entries, theories_to_add(args), conditions, budget)
     save(run_dir, entries)
+    ensure_cv(entries, conditions, k=args.cv_folds, budget=budget, workers=args.cv_workers, recompute=args.cv,
+              on_done=lambda: save(run_dir, entries))
     print(f"{len(conditions)} conditions, {total_choices(conditions)} choices; leaderboard:\n"
           f"{leaderboard_table(entries)}")
 

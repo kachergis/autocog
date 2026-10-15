@@ -163,13 +163,17 @@ class FitResult:
 @dataclass(frozen=True)
 class FitBudget:
     """differential_evolution settings. Defaults are sized for the inner
-    critique loop (one fit per candidate); raise them for final fits."""
+    critique loop (one fit per candidate); raise them for final fits.
+
+    `lapse_max` is the upper bound of the fitted guessing rate (lower it for
+    sensitivity checks)."""
 
     popsize: int = 10
     maxiter: int = 40
     tol: float = 1e-4
     polish: bool = True
     seed: int = 0
+    lapse_max: float = LAPSE_BOUNDS[1]
 
 
 def fit(
@@ -191,7 +195,7 @@ def fit(
     if LAPSE in free or (fit_lapse and LAPSE in fixed):
         raise ValueError(f"{LAPSE!r} is reserved for the fitted guessing rate")
     if fit_lapse:
-        free[LAPSE] = LAPSE_BOUNDS
+        free[LAPSE] = (LAPSE_BOUNDS[0], budget.lapse_max)
     names = list(free)
     t0 = time.perf_counter()
     n_evals = 0

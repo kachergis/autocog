@@ -159,6 +159,12 @@ def test_reported_accuracy_includes_guessing(corpus) -> None:
     assert ev.per_condition_sse[0] == pytest.approx(((ev.per_condition_perf[0] - c.accuracy) ** 2).sum())
 
 
+def test_lapse_upper_bound_is_respected(corpus) -> None:
+    r = fitting.fit(models.baseline, {}, corpus[:4],
+                    budget=fitting.FitBudget(popsize=6, maxiter=20, lapse_max=0.05))
+    assert r.params["lapse"] <= 0.05
+
+
 def test_lapse_name_is_reserved() -> None:
     with pytest.raises(ValueError, match="reserved"):
         parse_parameters({"lapse": "[0, 1]"})
