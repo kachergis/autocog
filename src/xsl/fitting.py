@@ -59,7 +59,7 @@ def choice_probabilities(m: np.ndarray, condition: Condition, d: float | None = 
     out = np.zeros((len(condition.test), n_objects))
     col = {o: j for j, o in enumerate(condition.objects)}
     for i, (word, cands) in enumerate(zip(condition.test.words, condition.test.objects)):
-        probs = predict_referent(m, condition.words, condition.objects, word, cands)
+        probs = predict_referent(m, condition.words, condition.objects, word, cands, d)
         for c, p in zip(cands, probs):
             if c in col:
                 out[i, col[c]] += p

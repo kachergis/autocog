@@ -78,6 +78,13 @@ def test_get_perf_luce_and_chance() -> None:
         scoring.get_perf(np.ones((3, 2)))
 
 
+def test_choice_exponent_applies_on_mafc_tests() -> None:
+    # XSLmodels e70c10c: a model's ch_dec is used on test trials as well
+    m = np.array([[3.0, 1.0, 0.0], [0.0, 2.0, 2.0]])
+    test = MAFCTest(words=(10,), objects=((10, 20),))
+    np.testing.assert_allclose(scoring.mafc_test(m, (10, 20), (10, 20, 30), test, d=2), [0.9])
+
+
 def test_mafc_test_matches_labels_and_explicit_targets() -> None:
     m = np.array([[3.0, 1.0, 0.0], [0.0, 2.0, 2.0]])
     words, objects = (10, 20), (10, 20, 30)

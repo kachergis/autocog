@@ -40,12 +40,14 @@ def get_perf(m: np.ndarray, d: float | None = None) -> np.ndarray:
 
 
 def predict_referent(m: np.ndarray, words: Sequence[Any], objects: Sequence[Any],
-                     word: Any, candidates: Sequence[Any]) -> np.ndarray:
+                     word: Any, candidates: Sequence[Any], d: float | None = None) -> np.ndarray:
     """P(choose each candidate | probe word): the word's row over the candidates.
 
     Labels are matched against the matrix's word / object labels; a candidate
     the learner never saw contributes 0, and a novel word (or a row with no
-    mass on any candidate) is at chance over the candidates.
+    mass on any candidate) is at chance over the candidates. `d` is the power
+    choice rule's exponent, as in `get_perf` (XSLmodels >= e70c10c applies a
+    model's `ch_dec` on test trials too).
     """
     k = len(candidates)
     uniform = np.full(k, 1.0 / k)
@@ -54,17 +56,18 @@ def predict_referent(m: np.ndarray, words: Sequence[Any], objects: Sequence[Any]
     except ValueError:
         return uniform
     obj_pos = {o: j for j, o in enumerate(objects)}
-    M = np.maximum(m, 0.0)
+    M = np.maximum(m, 0.0) ** (1.0 if d is None else d)
     row = np.array([M[row_idx, obj_pos[c]] if c in obj_pos else 0.0 for c in candidates])
     s = row.sum()
     return row / s if s > 0 else uniform
 
 
-def mafc_test(m: np.ndarray, words: Sequence[Any], objects: Sequence[Any], test: MAFCTest) -> np.ndarray:
+def mafc_test(m: np.ndarray, words: Sequence[Any], objects: Sequence[Any], test: MAFCTest,
+              d: float | None = None) -> np.ndarray:
     """P(correct) per test trial; the target is `test.correct[i]` or the probe word's label."""
     out = np.empty(len(test))
     for i, (word, candidates) in enumerate(zip(test.words, test.objects)):
-        probs = predict_referent(m, words, objects, word, candidates)
+        probs = predict_referent(m, words, objects, word, candidates, d)
         target = word if test.correct is None else test.correct[i]
         out[i] = probs[list(candidates).index(target)] if target in candidates else np.nan
     return out
@@ -73,7 +76,7 @@ def mafc_test(m: np.ndarray, words: Sequence[Any], objects: Sequence[Any], test:
 def predict_accuracy(m: np.ndarray, condition: Condition, d: float | None = None) -> np.ndarray:
     """Predicted per-item accuracy for `condition` from its final association matrix."""
     if condition.test is not None:
-        return mafc_test(m, condition.words, condition.objects, condition.test)
+        return mafc_test(m, condition.words, condition.objects, condition.test, d)
     return get_perf(m, d=d)
 
 
