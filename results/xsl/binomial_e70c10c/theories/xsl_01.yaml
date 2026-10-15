@@ -1,0 +1,37 @@
+name: Interference-limited mutual-responsibility learning
+theory: 'On each trial the learner divides credit for each word among the co-present objects, and for
+  each object among the co-present words, in proportion to sharpened current strength plus a small prior.
+  Each pair is strengthened by the product of its word-side and object-side responsibilities, which gives
+  soft mutual exclusivity and explaining away. Forgetting is interference-based rather than global: only
+  associations involving a word or object that is currently on the trial decay. Knowledge of items not
+  currently competing persists, so extra exposure and long training help, while dense competition (many
+  words and objects per trial) erodes strength. Test choice is a power-law Luce competition.'
+learn: |-
+  def learn(params, trials, n_words, n_objects):
+      s = params['s']
+      g = params['g']
+      C = params['C']
+      m = np.zeros((n_words, n_objects))
+      for words, objects in trials:
+          ix = np.ix_(words, objects)
+          A = (m[ix] + s) ** g
+          pw = A / A.sum(axis=1, keepdims=True)
+          po = A / A.sum(axis=0, keepdims=True)
+          dec = np.ones((n_words, n_objects))
+          dec[words, :] = C
+          dec[:, objects] = C
+          m *= dec
+          m[ix] += pw * po
+      return m + 1e-6
+parameters:
+  s: '[0.01, 5]'
+  g: '[0.5, 5]'
+  C: '[0.5, 1]'
+  ch_dec: '[0.3, 6]'
+rationale: 'The accepted global-decay model compresses the accuracy range: it underpredicts easy, long
+  or low-ambiguity conditions (215 1x3, 225 2x2, 220, filt*_9L) and overpredicts the hardest dense ones.
+  Global per-trial decay penalises designs with many trials regardless of whether the words involved are
+  still being competed over. Restricting decay to rows and columns of the items on the trial lets strength
+  persist for items not currently competing, so repetition pays off in sparse designs. Dense designs (3x4,
+  4x4) still lose strength through heavy interference. The parameter count is unchanged, so BIC should
+  drop if the fit improves.'
