@@ -249,6 +249,15 @@ def test_warm_start_never_ends_worse_than_x0(corpus) -> None:
     assert r.nll <= at_x0 + 1e-9
 
 
+def test_warm_start_from_a_bound(corpus) -> None:
+    # a previous fit can sit exactly on a bound (e.g. C = 1 in [0.5, 1]); scipy
+    # must still accept it as x0
+    theory = XSLTheory.from_yaml("theories/xsl/kachergis.yaml")
+    x0 = {"X": 0.001, "B": 15.0, "C": 1.0, "lapse": fitting.LAPSE_BOUNDS[0]}
+    r = fitting.fit_theory(theory, corpus[:3], budget=fitting.FitBudget(popsize=2, maxiter=1, polish=False), x0=x0)
+    assert math.isfinite(r.nll)
+
+
 def test_more_restarts_never_do_worse(corpus) -> None:
     theory = XSLTheory.from_yaml("theories/xsl/kachergis.yaml")
     conds = corpus[:6]

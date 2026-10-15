@@ -296,7 +296,10 @@ def fit(
     else:
         start = None
         if x0 is not None:
-            start = np.array([min(max(float(x0.get(n, (lo + hi) / 2)), lo), hi)
+            # clip a hair inside: scipy rescales x0 to [0, 1] and rejects a
+            # value sitting exactly on a bound once rounding makes it -1e-17
+            start = np.array([min(max(float(x0.get(n, (lo + hi) / 2)), lo + 1e-12 * (hi - lo)),
+                                  hi - 1e-12 * (hi - lo))
                               for n, (lo, hi) in zip(names, bounds)])
         pool = None
         if budget.workers > 1:
