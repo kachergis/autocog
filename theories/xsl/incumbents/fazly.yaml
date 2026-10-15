@@ -1,0 +1,26 @@
+name: Probabilistic incremental alignment (Fazly, Alishahi & Stevenson 2010)
+theory: >-
+  On each trial every word aligns to each co-present object in proportion to its current
+  probability of meaning that object (smoothed for never-seen pairs); alignments accumulate as
+  associations, and each word's meaning probabilities are the smoothed, normalised associations.
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      lam, beta = params["lambda"], params["beta"]
+      alpha, eps = 10.0, 0.001  # XSLmodels fazly() defaults
+      assoc = np.zeros((n_words, n_objects))
+      probs = np.zeros((n_words, n_objects))
+      t_unseen = np.full(n_words, 1.0 / beta)
+      for words, objects in trials:
+          tr = probs[np.ix_(words, objects)].copy()
+          unseen = tr == 0
+          tr[unseen] = np.broadcast_to(t_unseen[words][:, None], tr.shape)[unseen]
+          align = (tr + eps) / (tr.sum(axis=0, keepdims=True) + alpha * eps)
+          assoc[np.ix_(words, objects)] += align
+          denom = assoc[words, :].sum(axis=1) + beta * lam
+          probs[words, :] = (assoc[words, :] + lam) / denom[:, None]
+          t_unseen[words] = lam / denom
+      return probs
+parameters:
+  lambda: "[1e-10, 2]"
+  beta: "[2, 20000]"
+rationale: xsl-bakeoff v05 incumbent (XSLmodels fazly, alpha = 10, epsilon = .001); v05 bounds.

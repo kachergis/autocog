@@ -98,9 +98,38 @@ def test_mafc_test_matches_labels_and_explicit_targets() -> None:
 
 # --- parity with R -------------------------------------------------------------
 
+INCUMBENT_YAMLS = {
+    "uncfam_gamma": "theories/xsl/incumbents/uncfam_gamma.yaml",
+    "uncfam_attention": "theories/xsl/incumbents/uncfam_attention.yaml",
+    "fazly": "theories/xsl/incumbents/fazly.yaml",
+    "tilles": "theories/xsl/incumbents/tilles.yaml",
+    "Bayesian_decay": "theories/xsl/incumbents/bayesian_decay.yaml",
+}
+
+
 def test_reference_runs_cover_ported_models() -> None:
     reference = json.loads((DATA_DIR / "reference_predictions.json").read_text())
-    assert {r["constructor"] for r in reference} == set(models.LEARNERS)
+    assert {r["constructor"] for r in reference[:4]} == set(models.LEARNERS)
+    assert {r["model"] for r in reference[4:]} == set(INCUMBENT_YAMLS)
+
+
+@pytest.mark.parametrize("name", sorted(INCUMBENT_YAMLS))
+def test_incumbent_port_matches_r_on_every_condition(corpus, reference, name) -> None:
+    """The XSLTheory ports of the v05 incumbents reproduce XSLmodels at the v05 fit.
+
+    Compared through `XSLTheory.learner()`, i.e. with indices shuffled as the
+    loop runs them; R associations are clamped at 0 as the Luce rule does.
+    """
+    from src.xsl.theory import XSLTheory
+
+    run = next(r for r in reference if r["model"] == name)
+    theory = XSLTheory.from_yaml(INCUMBENT_YAMLS[name])
+    for cond, r in zip(corpus, run["corpus"], strict=True):
+        perf, m = scoring.run(theory.learner(), run["params"], cond)
+        r_matrix = np.maximum(np.array(r["matrix"], dtype=float), 0.0)
+        np.testing.assert_allclose(m, r_matrix, rtol=1e-9, atol=1e-12, err_msg=f"{name} matrix, {cond.label}")
+        np.testing.assert_allclose(perf, np.array(r["perf"], dtype=float), rtol=0, atol=1e-9,
+                                   err_msg=f"{name} perf, {cond.label}")
 
 
 @pytest.mark.parametrize("run_idx", range(4))

@@ -167,6 +167,16 @@ REFERENCE_RUNS <- list(
        params = list(X = 0.05, B = 0.5, C = 0.97))
 )
 
+# The incumbent panel (src/xsl/incumbents.py) plus uncfam_gamma's parent, each
+# at its v05 fit: fixtures for the NumPy ports in theories/xsl/incumbents/.
+for (name in c("uncfam_gamma", "uncfam_attention", "fazly", "tilles", "Bayesian_decay")) {
+  if (is.null(incumbents[[name]])) next
+  REFERENCE_RUNS[[length(REFERENCE_RUNS) + 1]] <- list(
+    model = name, constructor = SPECS[[name]]$constructor, fixed = SPECS[[name]]$fixed,
+    params = lapply(incumbents[[name]]$params, unclass)
+  )
+}
+
 run_reference <- function(run, datasets) {
   mod <- build_model(run, run$params)
   res <- xsl_run(mod, datasets)
