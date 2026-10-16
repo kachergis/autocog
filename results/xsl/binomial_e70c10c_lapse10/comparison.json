@@ -90,5 +90,22 @@
     ],
     "bounds_override": {},
     "minutes": 19.783650597916616
+  },
+  {
+    "label": "xsl_09",
+    "k": 14,
+    "nll_before": 2927.533128619633,
+    "nll_after": 2967.3394699270048,
+    "cv_before": 3192.763937099066,
+    "cv_after": 3288.542734707767,
+    "cv_wsse_after": 0.42341259273723747,
+    "lapse_after": 0.1,
+    "at_bound_after": [
+      "lam",
+      "r",
+      "lapse"
+    ],
+    "bounds_override": {},
+    "minutes": 39.999145163200104
   }
 ]
