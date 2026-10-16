@@ -16,6 +16,18 @@ condition's `response_matrix`, summed over conditions. Two are available
     .41 on the hardest conditions, where people score .16). Kept as a
     diagnostic.
 
+  * "subject": the random-ability likelihood of each person's responses.
+    Group counts cannot identify differences between people (each person
+    answers each item once, so an item's count is binomial however much
+    people differ); per-subject response patterns can. Person s has an
+    ability offset u_s ~ N(0, ability_sd^2) on the log-odds of the theory's
+    predicted accuracy p_i, so P(correct) = (1 - lapse) * logistic(logit p_i
+    + u_s) + lapse / n_choices_i; each person's likelihood is the product
+    over their items, integrated over u_s by Gauss-Hermite quadrature. The
+    spread `ability_sd` is fitted for every theory (a reserved, counted
+    parameter, like `lapse`). With ability_sd = 0 it equals the binomial NLL
+    up to the binomial coefficients. Needs `Condition.subject_correct`.
+
 Explicit-test items use only the target's count, so they are unaffected by
 any mismatch between recorded candidate lists and the objects people chose.
 
@@ -44,14 +56,22 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.optimize import differential_evolution
-from scipy.special import gammaln, xlog1py, xlogy
+from scipy.special import gammaln, log_ndtr as norm_logcdf, xlog1py, xlogy
 
 from src.xsl.corpus import Condition
 from src.xsl.scoring import Learner, predict_accuracy, predict_referent, sse
 
 LAPSE = "lapse"
 LAPSE_BOUNDS = (1e-3, 0.95)
-OBJECTIVES = ("binomial", "multinomial")
+OBJECTIVES = ("binomial", "multinomial", "subject")
+DIAGNOSTIC_OBJECTIVES = ("binomial", "multinomial")  # always reported alongside the fitted one
+ABILITY_SD = "ability_sd"
+ABILITY_SD_BOUNDS = (0.0, 6.0)
+RESERVED = (LAPSE, ABILITY_SD)
+_GL_NODES, _GL_WEIGHTS = np.polynomial.legendre.leggauss(8)
+_FLAT = 14.0   # |logit| beyond which an item's P(correct) is flat to within e^-14
+_PANEL = 1.0   # widest Gauss-Legendre panel, in logits
+_P_CLIP = 1e-9
 
 
 def choice_probabilities(m: np.ndarray, condition: Condition, d: float | None = None) -> np.ndarray:
@@ -81,11 +101,77 @@ def _binomial_nll(k: np.ndarray, n: np.ndarray, p: np.ndarray) -> float:
     return float(-(log_coef + xlogy(k, p) + xlog1py(n - k, -p)).sum())
 
 
+def subject_nll(p_correct: np.ndarray, condition: Condition, lapse: float, ability_sd: float) -> float:
+    """Random-ability NLL of `condition.subject_correct` given per-item accuracy `p_correct` (before guessing).
+
+    Each person's likelihood is integrated over their ability u ~ N(0,
+    ability_sd^2). Every item's P(correct) depends on u only through
+    logistic(logit p_i + u), which is flat (to within e^-14) once |logit p_i
+    + u| > 14. So outside the window [-14 - max logit p, 14 - min logit p]
+    every person's likelihood is constant - its all-guessing or all-knowing
+    limit - and those tails integrate exactly against the normal CDF. Inside
+    the window (clipped to +-z ability_sd, z large enough that the ignored
+    prior mass is negligible next to every person's likelihood) the integrand is resolved by
+    composite Gauss-Legendre on panels at most 1 logit and 1 ability_sd
+    wide, shared by everyone in the condition. (Gauss-Hermite nodes, fixed or adapted to each
+    person's posterior peak, failed: with guessing the likelihood never
+    reaches 0 or 1, so a high-accuracy person's posterior is a Gaussian cut
+    by a step, not a peak.)
+    """
+    y = condition.subject_correct
+    if y is None:
+        raise ValueError(f"{condition.label} has no per-subject responses (export subject_responses.json)")
+    k = n_choices_per_item(condition)
+    p_clip = np.clip(p_correct, _P_CLIP, 1 - _P_CLIP)
+    eta = np.log(p_clip) - np.log1p(-p_clip)                              # (I,)
+    seen = ~np.isnan(y)
+    yy = np.where(seen, y, 0.0)                                           # (S, I)
+    wrong = (seen & (yy == 0)).astype(float)
+
+    def log_lik(pc):  # pc: (Q, I) -> (S, Q)
+        pc = np.clip(pc, _P_CLIP, 1 - _P_CLIP)
+        return yy @ np.log(pc).T + wrong @ np.log1p(-pc).T
+
+    if ability_sd < 1e-8:
+        return float(-log_lik(((1 - lapse) * p_clip + lapse / k)[None, :])[:, 0].sum())
+
+    # Prior mass beyond +-z ability_sd is ignored; z is chosen so that mass is
+    # negligible even against the person with the smallest likelihood at
+    # ability_sd = 0 (likelihoods can be ~e^-200 with a small guessing rate).
+    worst = float(-log_lik(((1 - lapse) * p_clip + lapse / k)[None, :])[:, 0].max())
+    z = np.sqrt(2.0 * (worst + 40.0))
+    lo, hi = -z * ability_sd, z * ability_sd
+    # outside [w1, w2] every item's P(correct) is at its limit (flat to within e^-14)
+    w1, w2 = -_FLAT - eta.max(), _FLAT - eta.min()
+    a, b = max(lo, w1), min(hi, w2)
+    parts = []
+    if b > a:
+        # panels at most 1 logit wide (item transitions) and 1 ability_sd wide (the prior)
+        n_panels = int(np.ceil((b - a) / min(_PANEL, ability_sd)))
+        edges = np.linspace(a, b, n_panels + 1)
+        half = (edges[1:] - edges[:-1]) / 2.0
+        nodes = ((edges[1:] + edges[:-1]) / 2.0)[:, None] + half[:, None] * _GL_NODES[None, :]
+        nodes, log_w = nodes.ravel(), (np.log(half)[:, None] + np.log(_GL_WEIGHTS)[None, :]).ravel()
+        q = 1.0 / (1.0 + np.exp(-(eta[None, :] + nodes[:, None])))        # (Q, I)
+        log_prior = -0.5 * (nodes / ability_sd) ** 2 - np.log(ability_sd * np.sqrt(2 * np.pi))
+        parts.append(log_lik((1 - lapse) * q + lapse / k[None, :]) + (log_prior + log_w)[None, :])
+    # flat tails, exactly: the likelihood at its u -> -inf / +inf limit times the
+    # prior mass beyond the window (zero if the window reaches past +-z ability_sd)
+    if w1 > lo:
+        parts.append(log_lik((lapse / k)[None, :]) + norm_logcdf(w1 / ability_sd))
+    if w2 < hi:
+        parts.append(log_lik((1 - lapse + lapse / k)[None, :]) + norm_logcdf(-w2 / ability_sd))
+    log_L = np.logaddexp.reduce(np.concatenate(parts, axis=1), axis=1)
+    return float(-log_L.sum())
+
+
 def condition_nll(m: np.ndarray, condition: Condition, d: float | None = None, lapse: float = 0.0,
-                  objective: str = "binomial") -> float:
+                  objective: str = "binomial", ability_sd: float = 0.0) -> float:
     """Negative log-likelihood of `condition`'s human test responses under association matrix `m`."""
     if objective not in OBJECTIVES:
         raise ValueError(f"objective must be one of {OBJECTIVES}, got {objective!r}")
+    if objective == "subject":
+        return subject_nll(predict_accuracy(m, condition, d=d), condition, lapse, ability_sd)
     rm = condition.response_matrix
     if rm is None:
         raise ValueError(f"{condition.label} has no response matrix")
@@ -140,14 +226,15 @@ def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Co
     per-item accuracy and SSE with the guessing rate mixed in
     ((1 - lapse) * p + lapse / n_choices), i.e. the accuracy the likelihood scores."""
     nlls, sses, perfs = [], [], []
-    others = {o: 0.0 for o in OBJECTIVES if o != objective}
+    others = {o: 0.0 for o in DIAGNOSTIC_OBJECTIVES if o != objective}
     d = params.get("ch_dec")
     lapse = params.get(LAPSE, 0.0)
+    ability_sd = params.get(ABILITY_SD, 0.0)
     for c in conditions:
         m = learner(params, c.positional_trials, len(c.words), len(c.objects))
         perf = (1 - lapse) * predict_accuracy(m, c, d=d) + lapse / n_choices_per_item(c)
         perfs.append(perf)
-        nlls.append(condition_nll(m, c, d, lapse, objective))
+        nlls.append(condition_nll(m, c, d, lapse, objective, ability_sd))
         for o in others:
             others[o] += condition_nll(m, c, d, lapse, o)
         sses.append(sse(perf, c))
@@ -245,12 +332,13 @@ class _NLLObjective:
         learner = self.learner()
         d = params.get("ch_dec")
         lapse = params.get(LAPSE, 0.0)
+        ability_sd = params.get(ABILITY_SD, 0.0)
         total = 0.0
         try:
             with np.errstate(all="ignore"):
                 for c in self.conditions:
                     m = learner(params, c.positional_trials, len(c.words), len(c.objects))
-                    total += condition_nll(m, c, d, lapse, self.objective)
+                    total += condition_nll(m, c, d, lapse, self.objective, ability_sd)
         except (ArithmeticError, ValueError, FloatingPointError):
             return float("inf")
         return total if math.isfinite(total) else float("inf")
@@ -282,8 +370,12 @@ def fit(
     free = dict(free)
     if LAPSE in free or (fit_lapse and LAPSE in fixed):
         raise ValueError(f"{LAPSE!r} is reserved for the fitted guessing rate")
+    if ABILITY_SD in free:
+        raise ValueError(f"{ABILITY_SD!r} is reserved for the fitted between-subject spread")
     if fit_lapse:
         free[LAPSE] = (LAPSE_BOUNDS[0], budget.lapse_max)
+    if budget.objective == "subject" and ABILITY_SD not in fixed:
+        free[ABILITY_SD] = ABILITY_SD_BOUNDS
     names = list(free)
     bounds = [free[n] for n in names]
     t0 = time.perf_counter()

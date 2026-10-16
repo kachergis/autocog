@@ -185,6 +185,15 @@ OBJECTIVE_TEXT = {
         "how many were tested (binomial). The score is about item-level ACCURACY: "
         "which wrong object people chose does not count."
     ),
+    "subject": (
+        "each person's test responses: whether they chose the correct referent on "
+        "each item. People differ in how much they learn, so every person gets an "
+        "ability offset on the log-odds of your predicted accuracy, drawn from a normal "
+        "distribution whose spread (`ability_sd`) is fitted automatically, like `lapse` - "
+        "do not declare it. The score is about item-level ACCURACY; which wrong object "
+        "people chose does not count. Model what an average learner does; individual "
+        "differences are handled by `ability_sd`."
+    ),
     "multinomial": (
         "multinomial over objects for n-AFC tests (so WHICH wrong object people "
         "choose matters, not just accuracy), binomial correct/incorrect for m-AFC tests."

@@ -28,7 +28,7 @@ accident. They are for final evaluation only.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -75,6 +75,9 @@ class Condition:
     response_matrix: ResponseMatrix | None = None
     description: str = ""
     index: int | None = None
+    # per-subject test responses, (n_subj, n_items) of 1 = correct, 0 = wrong,
+    # NaN = not tested; from data/xsl/subject_responses.json when available
+    subject_correct: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         if len(self.train_words) != len(self.train_objects):
@@ -165,9 +168,34 @@ def _read(name: str, data_dir: Path | None) -> Any:
     return json.loads(path.read_text())
 
 
-def load_corpus(data_dir: Path | None = None) -> list[Condition]:
-    """The fitting corpus (XSLmodels `xsl_datasets`), in package order."""
-    return [_condition_from_json(d) for d in _read("corpus.json", data_dir)]
+def load_corpus(data_dir: Path | None = None, *, subjects: bool = True) -> list[Condition]:
+    """The fitting corpus (XSLmodels `xsl_datasets`), in package order.
+
+    With `subjects` (the default) each condition also gets its per-subject
+    responses (`Condition.subject_correct`) if `subject_responses.json` has
+    been exported (`scripts/xsl/export_subject_responses.R`). They are checked
+    against the condition: one row per subject, one column per item, and the
+    column means reproduce the stored per-item accuracy.
+    """
+    conditions = [_condition_from_json(d) for d in _read("corpus.json", data_dir)]
+    path = (data_dir or DATA_DIR) / "subject_responses.json"
+    if not subjects or not path.exists():
+        return conditions
+    by_label = {d["label"][0] if isinstance(d["label"], list) else d["label"]: d
+                for d in json.loads(path.read_text())}
+    out = []
+    for c in conditions:
+        d = by_label.get(c.label)
+        if d is None:
+            out.append(c)
+            continue
+        m = np.array([[np.nan if v is None else float(v) for v in row] for row in d["correct"]])
+        if m.shape != (c.n_subj, c.n_items):
+            raise ValueError(f"{c.label}: subject responses {m.shape}, expected ({c.n_subj}, {c.n_items})")
+        if not np.allclose(np.nanmean(m, axis=0), c.accuracy, atol=1e-9):
+            raise ValueError(f"{c.label}: subject responses do not reproduce the per-item accuracy")
+        out.append(replace(c, subject_correct=m))
+    return out
 
 
 def load_holdout(*, unseal: bool = False, data_dir: Path | None = None) -> dict[str, list[Condition]]:

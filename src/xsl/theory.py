@@ -61,6 +61,8 @@ def parse_parameters(parameters: dict[str, Any]) -> tuple[dict[str, tuple[float,
         free[name] = (lo, hi)
     if "lapse" in free or "lapse" in fixed:
         raise ValueError("'lapse' is reserved: a guessing rate is fitted for every theory automatically")
+    if "ability_sd" in free or "ability_sd" in fixed:
+        raise ValueError("'ability_sd' is reserved: the between-subject spread is fitted automatically")
     return free, fixed
 
 
