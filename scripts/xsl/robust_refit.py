@@ -59,6 +59,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--labels", nargs="+", required=True)
     p.add_argument("--objective", choices=OBJECTIVES, default="binomial")
+    p.add_argument("--source_objective", choices=OBJECTIVES, default=None,
+                   help="objective the --source run was scored with (default: --objective); its fits "
+                        "only seed the warm start")
     p.add_argument("--bounds", nargs="*", default=[], help='overrides, e.g. "xsl_09:s=[0.01, 4]"')
     p.add_argument("--popsize", type=int, default=12)
     p.add_argument("--maxiter", type=int, default=60)
@@ -70,8 +73,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def write_comparison(out: Path, rows: list[dict]) -> None:
+def write_comparison(out: Path, rows: list[dict], before: str, after: str) -> None:
     (out / "comparison.json").write_text(json.dumps(rows, indent=2))
+    note = "" if before == after else (
+        f"\n\n\"before\" is the {before} objective and \"after\" the {after} objective, so their NLLs are not "
+        "comparable; compare theories within a column.\n")
     lines = [
         "| label | k | full NLL before | full NLL after | held-out NLL before | held-out NLL after "
         "| held-out wSSE after | lapse after | at bound after | full-fit minutes |",
@@ -83,14 +89,15 @@ def write_comparison(out: Path, rows: list[dict]) -> None:
             f"| {r['cv_before']:.1f} | {r['cv_after']:.1f} | {r['cv_wsse_after']:.4f} "
             f"| {r['lapse_after']:.3f} | {', '.join(r['at_bound_after']) or '—'} | {r['minutes']:.0f} |"
         )
-    (out / "comparison.md").write_text("\n".join(lines) + "\n")
+    (out / "comparison.md").write_text("\n".join(lines) + "\n" + note)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     conditions = load_corpus()
     overrides = parse_bounds(args.bounds)
-    source = {e.label: e for e in runner.load(args.source, conditions, args.objective)}
+    source_objective = args.source_objective or args.objective
+    source = {e.label: e for e in runner.load(args.source, conditions, source_objective)}
     missing = [label for label in args.labels if label not in source]
     if missing:
         raise SystemExit(f"not in {args.source}/leaderboard.json: {missing}")
@@ -134,7 +141,7 @@ def main(argv: list[str] | None = None) -> None:
             "bounds_override": overrides.get(label, {}),
             "minutes": fit.seconds / 60,
         })
-        write_comparison(out, rows)
+        write_comparison(out, rows, source_objective, args.objective)
 
 
 if __name__ == "__main__":
