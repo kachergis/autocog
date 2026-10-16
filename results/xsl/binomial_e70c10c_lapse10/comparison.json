@@ -1,0 +1,94 @@
+[
+  {
+    "label": "inc_fazly",
+    "k": 3,
+    "nll_before": 3404.2359852459763,
+    "nll_after": 3411.633821480624,
+    "cv_before": 3504.5076787106077,
+    "cv_after": 3486.829881701431,
+    "cv_wsse_after": 0.48561899738091757,
+    "lapse_after": 0.1,
+    "at_bound_after": [
+      "lapse"
+    ],
+    "bounds_override": {},
+    "minutes": 2.4925230763833195
+  },
+  {
+    "label": "inc_uncfam_gamma",
+    "k": 5,
+    "nll_before": 3454.6721832362646,
+    "nll_after": 3538.620170459201,
+    "cv_before": 3593.377714312138,
+    "cv_after": 3684.9930805600616,
+    "cv_wsse_after": 0.5199759453559297,
+    "lapse_after": 0.1,
+    "at_bound_after": [
+      "lapse"
+    ],
+    "bounds_override": {},
+    "minutes": 8.031316497916851
+  },
+  {
+    "label": "kachergis",
+    "k": 4,
+    "nll_before": 3620.676483061034,
+    "nll_after": 3783.176215724438,
+    "cv_before": 3916.82302284233,
+    "cv_after": 4018.1311349273337,
+    "cv_wsse_after": 0.5963885373639711,
+    "lapse_after": 0.1,
+    "at_bound_after": [
+      "lapse"
+    ],
+    "bounds_override": {},
+    "minutes": 4.799286248616651
+  },
+  {
+    "label": "xsl_03",
+    "k": 6,
+    "nll_before": 3319.201413583715,
+    "nll_after": 3427.518310285673,
+    "cv_before": 3551.4192619456744,
+    "cv_after": 3571.783772105033,
+    "cv_wsse_after": 0.5010388503699043,
+    "lapse_after": 0.1,
+    "at_bound_after": [
+      "ch_dec",
+      "lapse"
+    ],
+    "bounds_override": {},
+    "minutes": 3.267687834716829
+  },
+  {
+    "label": "xsl_07",
+    "k": 10,
+    "nll_before": 3095.368206490358,
+    "nll_after": 3113.3538334273526,
+    "cv_before": 3534.1108922342514,
+    "cv_after": 3396.3354671065595,
+    "cv_wsse_after": 0.45238180537627787,
+    "lapse_after": 0.1,
+    "at_bound_after": [
+      "lapse"
+    ],
+    "bounds_override": {},
+    "minutes": 5.475157368749933
+  },
+  {
+    "label": "xsl_08",
+    "k": 12,
+    "nll_before": 3084.3502991097857,
+    "nll_after": 3102.895424981434,
+    "cv_before": 3519.2170641163793,
+    "cv_after": 3392.617801956071,
+    "cv_wsse_after": 0.44930298163615934,
+    "lapse_after": 0.1,
+    "at_bound_after": [
+      "p",
+      "lapse"
+    ],
+    "bounds_override": {},
+    "minutes": 19.783650597916616
+  }
+]
