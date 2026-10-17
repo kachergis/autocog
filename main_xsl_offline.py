@@ -106,7 +106,19 @@ def _entry_from_json(d: dict, conditions: list[Condition], objective: str) -> En
     )
 
 
+def next_generated_number(entries: list[Entry]) -> int:
+    """1 + the highest NN among `xsl_NN` labels. A run seeded with only some
+    generated theories (e.g. xsl_03-09) must not reuse a number: counting
+    them instead once labelled a new theory xsl_08 next to the old one."""
+    numbers = [int(e.label[4:]) for e in entries if e.label.startswith("xsl_") and e.label[4:].isdigit()]
+    return max(numbers, default=0) + 1
+
+
 def save(run_dir: Path, entries: list[Entry]) -> None:
+    labels = [e.label for e in entries]
+    duplicates = sorted({x for x in labels if labels.count(x) > 1})
+    if duplicates:
+        raise ValueError(f"duplicate leaderboard labels {duplicates}; refusing to overwrite their theory files")
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "leaderboard.json").write_text(json.dumps([_entry_json(e) for e in entries], indent=2))
     (run_dir / "leaderboard.md").write_text(f"# XSL leaderboard\n\n{leaderboard_table(entries)}\n")
@@ -258,9 +270,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.n_rounds > 0:
         generator = XSLTheoryGenerator(llm_client=make_llm_client(args), conditions=conditions, budget=budget,
                                        cv_folds=args.cv_folds, cv_workers=args.cv_workers)
-        n_generated = sum(e.label.startswith("xsl_") for e in entries)
-        for r in range(n_generated, n_generated + args.n_rounds):
-            label = f"xsl_{r + 1:02d}"
+        first = next_generated_number(entries)
+        for n in range(first, first + args.n_rounds):
+            label, r = f"xsl_{n:02d}", n - 1
             result = generator.propose_theory(
                 guide=args.guide, leaderboard=entries, max_iters=args.max_iters,
                 workspace=run_dir / f"round_{r:02d}",

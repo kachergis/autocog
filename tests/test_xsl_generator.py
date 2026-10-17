@@ -235,3 +235,18 @@ def test_generator_runs_under_the_subject_objective(conditions) -> None:
     result = gen.propose_theory(guide="g", leaderboard=board, max_iters=1)
     assert "ability_sd" in result.best.fit.params
     assert result.best.cv is not None and result.best.fit.evaluation.objective == "subject"
+
+
+def test_new_labels_continue_after_the_highest_number(conditions, leaderboard) -> None:
+    base = leaderboard[0]
+    seeded = [Entry(label=lab, theory=base.theory, fit=base.fit, cv=base.cv)
+              for lab in ("baseline", "xsl_03", "xsl_09", "xsl_04", "inc_fazly")]
+    assert main_xsl_offline.next_generated_number(seeded) == 10
+    assert main_xsl_offline.next_generated_number(seeded[:1]) == 1
+
+
+def test_save_refuses_duplicate_labels(leaderboard, tmp_path) -> None:
+    base = leaderboard[0]
+    twice = [base, Entry(label=base.label, theory=base.theory, fit=base.fit, cv=base.cv)]
+    with pytest.raises(ValueError, match="duplicate"):
+        main_xsl_offline.save(tmp_path, twice)
