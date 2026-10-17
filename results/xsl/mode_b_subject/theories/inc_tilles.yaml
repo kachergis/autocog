@@ -1,0 +1,74 @@
+name: Confidence-flux associative learning (Tilles & Fontanari 2012)
+theory: Each word holds a probability distribution over objects. On every trial, confidence flows into
+  the word's links to the objects present from its links to previously seen but absent objects (in proportion
+  to how much confidence sits on the absent ones), while words not on the trial shift confidence the other
+  way. Each word's update is scaled by its own certainty (one minus the normalised entropy of its distribution);
+  uncertain words drift toward uniform. Novel words start with a bias b toward the novel objects they
+  appear with.
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      x, b, alpha_0 = params["x"], params["b"], params["alpha_0"]
+      novel_w = np.ones(n_words, dtype=bool)
+      novel_o = np.ones(n_objects, dtype=bool)
+      m = np.zeros((n_words, n_objects))
+      alpha = np.full(n_words, alpha_0)
+
+      def entropy(p):  # XSLmodels shannon_entropy: NaN for negative or all-zero input
+          s = p.sum()
+          if p.min() < 0 or s <= 0:
+              return np.nan
+          q = p[p > 0] / s
+          return -(q * np.log2(q)).sum()
+
+      words, objects = trials[0]
+      m[np.ix_(words, objects)] = 1.0 / len(words)
+      novel_w[words] = False
+      novel_o[objects] = False
+
+      for words, objects in trials[1:]:
+          cur_novel_o = objects[novel_o[objects]]
+          cur_old_o = objects[~novel_o[objects]]
+          other_old_o = np.setdiff1d(np.flatnonzero(~novel_o), cur_old_o)
+          novel_o[objects] = False
+          cur_novel_w = words[novel_w[words]]
+          cur_old_w = words[~novel_w[words]]
+          other_old_w = np.setdiff1d(np.flatnonzero(~novel_w), cur_old_w)
+          novel_w[words] = False
+          n_o = int((~novel_o).sum())
+
+          if len(cur_novel_w):
+              m[np.ix_(cur_novel_w, cur_novel_o)] = b / len(cur_novel_w) + (1 - b) / n_o
+              m[np.ix_(cur_novel_w, cur_old_o)] = (1 - b) / n_o
+              m[np.ix_(cur_novel_w, other_old_o)] = (1 - b) / n_o
+
+          for w in words:
+              alpha[w] = alpha_0 + (1 - alpha_0) * (1 - entropy(m[w, :]) / np.log(n_o))
+
+          for w in words:
+              denom = m[w, objects].sum()
+              flux = 0.0 if denom == 0 else m[w, other_old_o].sum() / denom
+              r = x * m[w, objects] * flux
+              a = alpha[w]
+              m[w, objects] = m[w, objects] + a * r + (1 - a) * (1 / n_o - m[w, objects])
+              old = m[w, other_old_o]
+              m[w, other_old_o] = old - a * x * old + (1 - a) * (1 / n_o - old)
+
+          if len(other_old_w):
+              mt = m.copy()
+              ow_oo = np.ix_(other_old_w, other_old_o)
+              ow_tr = np.ix_(other_old_w, objects)
+              den = mt[ow_oo].sum(axis=1)
+              num = mt[ow_tr].sum(axis=1)
+              flux = np.where(den == 0, 0.0, num / np.where(den == 0, 1.0, den))
+              a = alpha[other_old_w][:, None]
+              r = b * mt[ow_oo] * flux[:, None]
+              m[ow_oo] = mt[ow_oo] + a * r + (1 - a) * (1 / n_o - mt[ow_oo])
+              m[ow_tr] = mt[ow_tr] - a * b * mt[ow_tr] + (1 - a) * (1 / n_o - mt[ow_tr])
+      # the update can drive associations slightly negative; the Luce rule
+      # clamps them at 0 (XSLmodels get_perf uses pmax(m, 0))
+      return np.maximum(m, 0.0)
+parameters:
+  x: '[0, 1]'
+  b: '[0, 1]'
+  alpha_0: '[0, 1]'
+rationale: xsl-bakeoff v05 incumbent (XSLmodels tilles); v05 bounds.
