@@ -112,7 +112,11 @@ Do not implement the choice rule yourself.
 ## PARAMETERS
 `parameters` maps each name to a string interval "[lo, hi]" (fitted to the \
 data) or a bare number (held fixed). Add a parameter only if it captures \
-something that generalises across conditions (see scoring below). Every \
+something that generalises across conditions (see scoring below). Do not \
+hard-code values taken from the fitted parameters shown below: those fits \
+used every condition, including each cross-validation fold's held-out ones, \
+so a parameter you pin is refitted as free (and counted) whenever a \
+leaderboard theory fits a parameter of the same name. Every \
 theory automatically gets one extra fitted parameter, `lapse`: the rate of \
 pure guessing (uniform over the choices) at test. Do not declare `lapse` \
 yourself, and do not model random guessing inside `learn`.

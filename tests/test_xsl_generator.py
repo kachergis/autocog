@@ -250,3 +250,18 @@ def test_save_refuses_duplicate_labels(leaderboard, tmp_path) -> None:
     twice = [base, Entry(label=base.label, theory=base.theory, fit=base.fit, cv=base.cv)]
     with pytest.raises(ValueError, match="duplicate"):
         main_xsl_offline.save(tmp_path, twice)
+
+
+def test_pinned_copies_of_fitted_parameters_are_refit(leaderboard) -> None:
+    from src.xsl.generator import unpin_fitted_names
+
+    base = leaderboard[0]
+    fitted = XSLTheory(theory="t", learn=COUNTING["learn"], parameters={"a": "[0, 2]", "b": "[1, 5]"})
+    board = [Entry(label="x", theory=fitted, fit=base.fit, cv=base.cv)]
+    cand = XSLTheory(theory="t", learn=COUNTING["learn"], parameters={"a": 0.7, "c": 3, "d": "[0, 1]"})
+    freed, names = unpin_fitted_names(cand, board)
+    assert names == ["a"]
+    assert freed.parameters == {"a": "[0, 2]", "c": 3, "d": "[0, 1]"}
+    assert set(freed.free_parameters) == {"a", "d"} and freed.fixed_parameters == {"c": 3.0}
+    same, none = unpin_fitted_names(fitted, board)
+    assert none == [] and same is fitted

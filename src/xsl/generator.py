@@ -43,6 +43,28 @@ def parse_reply(cls, text: str):
         return cls.from_llm_text(text)
 
 
+def unpin_fitted_names(theory: XSLTheory, leaderboard: Sequence[Entry]) -> tuple[XSLTheory, list[str]]:
+    """Free every parameter `theory` pins to a constant whose name a leaderboard
+    theory fits, giving it that theory's range (best-ranked first).
+
+    Leaderboard theories are fitted to the whole corpus, and the generator sees
+    their fitted values. A candidate that hard-codes them (xsl_10-12 pinned six
+    of xsl_09's) carries information from every cross-validation fold's
+    held-out conditions into its CV score, and understates its k. Constants
+    with new names stay pinned.
+    """
+    ranges: dict[str, str] = {}
+    for e in sorted(leaderboard, key=lambda e: e.score):
+        for name, spec in e.theory.parameters.items():
+            if name in e.theory.free_parameters and name not in ranges:
+                ranges[name] = spec
+    unpinned = [n for n in theory.fixed_parameters if n in ranges]
+    if not unpinned:
+        return theory, []
+    params = {**theory.parameters, **{n: ranges[n] for n in unpinned}}
+    return XSLTheory(**{**theory.model_dump(), "parameters": params}), unpinned
+
+
 def warm_start(theory: XSLTheory, sources: Sequence[dict[str, float]]) -> dict[str, float]:
     """Starting values for `theory`'s fit: each free parameter (and the reserved
     `lapse` / `ability_sd`) from the first source fit that has a parameter of
@@ -140,6 +162,11 @@ class XSLTheoryGenerator:
                 objective=self.budget.objective,
             )
             theory, error = self._propose(system, user, workspace, crit)
+            if theory is not None:
+                theory, unpinned = unpin_fitted_names(theory, leaderboard)
+                if unpinned:
+                    print(f"[xsl generator iter {crit}] refitting pinned parameters that leaderboard "
+                          f"theories fit: {unpinned}")
             if theory is None:
                 history.append(Iteration(candidate=None, fit=None, accepted=False, error=error))
                 if best is not None:
