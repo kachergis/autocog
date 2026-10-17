@@ -1,9 +1,10 @@
 # Offline AutoCog for cross-situational word learning: mode-B results
 
-Status: **draft, 2026-10-15.** Nine generator rounds, then a re-evaluation of
-every theory on corrected data, against the xsl-bakeoff incumbents, under an
-item-accuracy objective, with robust fits and a guessing-rate sensitivity
-check.
+Status: **draft, 2026-10-16.** Nine generator rounds, then a re-evaluation of
+every theory on corrected data, against the xsl-bakeoff incumbents: first
+under an item-accuracy objective (with robust fits and a guessing-rate
+sensitivity check), then under a per-subject random-ability likelihood that
+models individual differences directly.
 Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 
 | run | what | directory |
@@ -12,6 +13,7 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 | re-score | all 16 theories (seeds, 5 incumbents, `xsl_01`–`09`) refit and cross-validated, binomial objective, `e70c10c` | [`results/xsl/binomial_e70c10c/`](../results/xsl/binomial_e70c10c/) |
 | robust | top 10 refit with warm-started multi-start fits | [`results/xsl/binomial_e70c10c_robust/`](../results/xsl/binomial_e70c10c_robust/) |
 | sensitivity | top 7 refit with the guessing rate capped at .10 | [`results/xsl/binomial_e70c10c_lapse10/`](../results/xsl/binomial_e70c10c_lapse10/) |
+| random ability | top 10 refit on per-subject responses with random abilities (robust fits) | [`results/xsl/subject_e70c10c_robust/`](../results/xsl/subject_e70c10c_robust/) |
 
 ## Summary
 
@@ -20,17 +22,28 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
   each fitted to 47 adult conditions from the XSLmodels corpus (31,266 human
   test choices). No new data were collected.
 - **The best generated theory, `xsl_09` (commitment-gated claim exclusion with
-  redistributed credit), predicts held-out conditions 312 NLL better than the
-  best xsl-bakeoff model, fazly** (5-fold cross-validation over conditions,
-  item-accuracy likelihood: 3,193 vs 3,505; held-out weighted SSE 0.400 vs
-  0.492), and beats it on 33 of 47 conditions. It stays first with the
-  guessing rate capped (by 198 over fazly, 104 over the next generated
-  theory). It is over-parameterised: five
-  of its fourteen parameters fit at their bounds, three of them in every
-  cross-validation fold.
-- **Fazly is a strong incumbent.** With three parameters it out-predicts
-  every other generated theory unless the guessing rate is capped; with the
-  cap, `xsl_07` and `xsl_08` (10–12 parameters) beat it by ~90.
+  redistributed credit), is first under every objective and treatment
+  tried.** Under the per-subject random-ability likelihood — the final
+  objective — it predicts held-out conditions 213 NLL better than the best
+  xsl-bakeoff model on that criterion, kachergis (held-out NLL 16,922 vs
+  17,135; fazly 17,154), with the lowest held-out weighted SSE of all (0.433;
+  best incumbent fazly 0.504). Under the item-count binomial it led fazly by 312, and beat
+  it on 33 of 47 conditions. It is over-parameterised: several parameters
+  fit at their bounds.
+- **Under the random-ability likelihood every generated theory out-predicts
+  every incumbent.** The interference + test-time claim competition family
+  (`xsl_04`–`06`, 8–10 parameters) comes second to fourth; the larger
+  `xsl_07`/`xsl_08` overfit (held-out minus full-fit gaps > 100).
+- **Individual differences, not guessing.** With people's abilities modelled
+  (spread 1.4–1.6 logits), every theory in every cross-validation fold puts
+  the guessing rate at its floor (.001). The high fitted guessing rates
+  (.15–.46) under the earlier objectives were absorbing differences between
+  people.
+- **Fazly is a strong incumbent on item accuracy** — with three parameters
+  it was second under the binomial objective and has the best held-out
+  weighted SSE of the incumbents — but it ranks only ninth under the
+  random-ability likelihood, which also scores how each person's responses
+  hang together. The two criteria disagree for the incumbents.
 - The objective now scores **item-level accuracy** (binomial). Under the
   earlier multinomial objective 71–80% of the likelihood was about *which
   wrong object* people chose, and fits traded accuracy for it. Under the
@@ -41,9 +54,10 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
   optimum; warm-started multi-start fits fixed most of it. Likelihood
   surfaces have separate optima, so held-out differences of ~100 can reflect
   which optimum a fold lands in.
-- **The guessing rate is a modelling choice, not a nuisance.** Capping it at
-  .10 *improves* held-out prediction for fazly, `xsl_07` and `xsl_08` and
-  worsens it for uncfam_gamma, kachergis, `xsl_03` and `xsl_09`.
+- **Under the item-count binomial the guessing rate was a modelling choice,
+  not a nuisance**: capping it at .10 improved held-out prediction for fazly,
+  `xsl_07` and `xsl_08` and worsened it for the others. The random-ability
+  likelihood resolves this (see above).
 - LLM cost from logged tokens ≈ $3.8 for the nine rounds; the re-evaluation
   used no LLM calls. The OpenRouter key reports more spend than the logged
   tokens explain (see *Cost*).
@@ -54,17 +68,63 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 |---|---|
 | Data | `xsl_datasets`, 47 adult conditions, exported from XSLmodels `e70c10c` (the pin of the xsl-bakeoff v05 fits; includes PR #31's fix of the 211/214 4AFC alternatives) to `data/xsl/`. Holdouts (`benitez2020`, `kachergis_initial_accuracy`, `suanda2014`, `koehne2013`) sealed, unused. |
 | Theory format | Prose claim + `learn(params, trials, n_words, n_objects) → association matrix`; power-Luce test choice (`ch_dec`, if declared, on n-AFC and m-AFC tests alike). Indices are shuffled before `learn` sees them, so the corpus's "word i ↔ object i" convention cannot be exploited. |
-| Objective | **Binomial** negative log-likelihood of each test item's correct count out of n under the predicted accuracy (primary). The multinomial over all objects is reported as a diagnostic. |
-| Guessing | A guessing rate `lapse` (uniform choice at test) is fitted for every theory and counted as a parameter; sensitivity check with `lapse ≤ .10`. |
+| Per-subject data | Each condition's 0/1 test responses per person, exported from XSLmodels `data-raw` (1,609 people, no missing responses; every condition's per-item accuracy and `n_subj` reproduced exactly) to `data/xsl/subject_responses.json`. |
+| Objectives | **Random ability** (final): person s has an ability offset u_s ~ N(0, `ability_sd`²) on the log-odds of the theory's predicted accuracy; each person's likelihood over their items is integrated over u_s (exact flat tails + composite Gauss–Legendre; within 1.4e-7 per person of a dense grid). **Binomial**: each item's correct count out of n under the predicted accuracy. **Multinomial**: over all objects (diagnostic). |
+| Guessing | A guessing rate `lapse` (uniform choice at test) is fitted for every theory and counted as a parameter; under the random-ability objective `ability_sd` is fitted and counted too. Binomial sensitivity check with `lapse ≤ .10`. |
 | Fitting | Differential evolution. Re-score: one start (popsize 10, ≤ 40 generations). Robust: 3 starts (popsize 12, ≤ 60 generations), the first warm-started from the previous fit; each CV fold 2 starts warm-started from the full-corpus fit. |
 | Score | Held-out NLL from 5-fold cross-validation over conditions (same split for every theory). |
 | Incumbents | NumPy ports of the xsl-bakeoff v05 panel — fazly, uncfam_gamma, uncfam_attention, tilles, Bayesian_decay — plus kachergis (uncfam) and co-occurrence baseline; each matches XSLmodels on all 47 conditions at its v05 fit. |
 
 ## Results
 
-### Leaderboard
+### Random-ability objective (final)
 
-Binomial objective, ranked by held-out NLL with the guessing rate fitted
+Ranked by held-out NLL under the per-subject random-ability likelihood (5-fold
+CV over conditions; robust fits). k counts free parameters including `lapse`
+and `ability_sd`. "Gap" is held-out minus full-corpus NLL (both summed over
+the 47 conditions): large gaps mean overfitting or folds landing in different
+optima. NLLs here are on a per-person scale and not comparable with the
+binomial tables.
+
+| rank | theory | k | held-out NLL | held-out wSSE | gap | ability_sd | lapse | rank under binomial |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `xsl_09` commitment-gated claim exclusion | 15 | **16,921.7** | **0.433** | +59 | 1.44 | .001 | 1 |
+| 2 | `xsl_04` interference + test-time claim competition | 9 | 16,991.3 | 0.494 | +44 | 1.47 | .001 | 8 |
+| 3 | `xsl_05` + repetition boost | 10 | 16,995.9 | 0.497 | +34 | 1.48 | .001 | 6 |
+| 4 | `xsl_06` + consolidation protection | 11 | 16,998.6 | 0.493 | +33 | 1.48 | .001 | 9 |
+| 5 | `xsl_03` load-scaled absent-alternative interference | 7 | 17,050.6 | 0.546 | +38 | 1.49 | .001 | 5 |
+| 6 | `xsl_08` decaying-trace contiguity interference | 13 | 17,061.6 | 0.509 | +115 | 1.46 | .001 | 3 |
+| 7 | `xsl_07` soft-sharpness interference + contiguity | 11 | 17,065.7 | 0.517 | +130 | 1.46 | .001 | 4 |
+| 8 | kachergis | 5 | 17,135.1 | 0.689 | +34 | 1.56 | .001 | 10 |
+| 9 | fazly | 4 | 17,153.6 | 0.504 | +24 | 1.45 | .001 | 2 |
+| 10 | uncfam_gamma | 6 | 17,177.2 | 0.707 | +102 | 1.59 | .001 | 7 |
+
+- **No guessing is needed.** Every theory, and every cross-validation fold of
+  every theory (one `xsl_03` fold: .008), puts `lapse` at its .001 floor.
+  The between-person spread is stable at 1.4–1.6 logits — people differ
+  roughly ±1.5 on the log-odds of their accuracy. `lapse` could be fixed to
+  zero.
+- **Parameters change meaning once individual differences are modelled.**
+  Fazly's fit (`lambda` .147, `beta` 21.8) returns almost exactly to the
+  xsl-bakeoff SSE fit (`beta` 21.4); uncfam_gamma's familiarity exponent
+  flips from .69 (dampened) to 1.44 (amplified); kachergis settles at B ≈ 5
+  between the two optima it alternated between under the binomial;
+  `xsl_07`'s sharpening exponent rises above 1 (1.10) and its claim
+  competition hits its bound; `xsl_04`'s claim competition, zero under the
+  binomial, is active again (`b` .26).
+- **The two criteria disagree for the incumbents.** Kachergis is the best
+  incumbent by held-out NLL but the worst by held-out wSSE (0.689); fazly the
+  reverse. The random-ability likelihood scores how each person's responses
+  hang together, not just average item accuracy. `xsl_09` is best on both.
+- **Remaining fit instability.** uncfam_gamma's large gap comes from one fold
+  landing in its other optimum (B 12.8, γ .74 instead of B ≈ 2.5, γ ≈ 1.5).
+  `xsl_05` contains `xsl_04` yet fitted 15 NLL worse on the full corpus (its
+  repetition boost fitted to ~0 but it stayed near `Mmax` 2.2 rather than
+  `xsl_04`'s 0.3).
+
+### Binomial objective (item counts)
+
+Ranked by held-out NLL with the guessing rate fitted
 freely. k counts free parameters including `lapse`. "Fit" says whether the
 numbers come from the robust multi-start refit or the single-start re-score.
 
@@ -159,8 +219,10 @@ rate overfits the training conditions. Theories that lean on guessing
 jumps to its high-B optimum, `xsl_03` flattens its choice rule to the floor —
 and predict worse; so does `xsl_09` (+96 held out), though it stays first
 (3,288.5 vs 3,392.6 for `xsl_08` and 3,486.8 for fazly). The ranking between
-fazly and `xsl_07`/`xsl_08` flips with the cap, so the treatment of guessing
-has to be decided, not left as a nuisance (see *Next steps*).
+fazly and `xsl_07`/`xsl_08` flips with the cap, so under item counts the
+treatment of guessing changes conclusions. The random-ability likelihood
+settles it: once people's abilities are modelled, no theory needs any
+guessing at all (see above).
 
 ### Where `xsl_09` beats fazly
 
@@ -249,6 +311,12 @@ whether it survives under the accuracy objective:
 
 ## Caveats
 
+- **Objective choice changes the incumbents' order** (fazly 2nd under the
+  binomial, 9th under random ability; kachergis 10th → 8th) and which
+  generated mechanisms look active; `xsl_09`'s first place is the one result
+  stable across all of them.
+- Under random ability, `xsl_09` still fits `lam`, `Mmax` and `xi` at their
+  upper bounds (`kc` now inside its widened range, at 25).
 - **`xsl_09` is over-parameterised.** `lam`, `Mmax`, `r`, `kc` and `xi` sit at
   their upper bounds in the full fit, and `kc`, `Mmax` and `r` in every fold
   too (`kc` 37.7–40 after its range was widened from 8 to 40, `Mmax` ≈ 30,
@@ -286,18 +354,19 @@ settle it; treat ≈ $0.30 per round as a lower bound. The re-evaluation
 
 ## Next steps
 
-1. **Decide the guessing treatment**: a fixed cap, a prior on `lapse`, or a
-   beta-binomial likelihood with fitted dispersion — and make it the default
-   before more generation rounds.
+1. **Adopt the random-ability likelihood as the default objective** for
+   further generation, with `lapse` fixed at 0 (it fits to its floor
+   everywhere) — one fewer parameter per theory. Report held-out weighted SSE
+   alongside, since the two criteria can disagree.
 2. **Reparameterise `xsl_09`** (or fix its bounded parameters) and refit.
 3. Robustly refit the remaining single-start theories (tilles,
    uncfam_attention, Bayesian_decay, `xsl_01`, `xsl_02`) and give `xsl_06` a
    start in `xsl_05`'s region.
 4. Evaluate the top theories once on the sealed holdouts (adults and children
    reported separately).
-5. Resume generation under the accuracy objective with fazly on the
-   leaderboard as the target, using robust fits at the accept gate where
-   affordable.
+5. Resume generation under the random-ability objective with the incumbents
+   and `xsl_09` on the leaderboard, using robust (warm-started) fits at the
+   accept gate where affordable.
 6. Phase 2: seed a debate with structurally different theories (associative
    vs hypothesis-testing). Phase 3: use `xsl_09` vs fazly to propose
    discriminating designs (e.g. 215- vs 222-style orderings).
@@ -321,6 +390,13 @@ uv run python scripts/xsl/robust_refit.py --source results/xsl/binomial_e70c10c 
 uv run python scripts/xsl/robust_refit.py --source results/xsl/binomial_e70c10c_robust \
     --out results/xsl/binomial_e70c10c_lapse10 --lapse_max 0.1 --restarts 2 \
     --labels inc_fazly inc_uncfam_gamma kachergis xsl_03 xsl_07 xsl_08 xsl_09
+
+# per-subject responses (XSLmodels checkout at the manifest commit), then the
+# random-ability refits, warm-started from the binomial robust fits
+Rscript scripts/xsl/export_subject_responses.R --xslmodels ../XSLmodels
+uv run python scripts/xsl/robust_refit.py --source results/xsl/binomial_e70c10c_robust \
+    --source_objective binomial --objective subject --out results/xsl/subject_e70c10c_robust \
+    --labels inc_fazly inc_uncfam_gamma kachergis xsl_03 xsl_07 xsl_08 xsl_09 xsl_04 xsl_05 xsl_06
 ```
 
 Every generator and critic exchange is in `results/xsl/mode_b/round_NN/prompts/`;
