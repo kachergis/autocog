@@ -43,6 +43,22 @@ def parse_reply(cls, text: str):
         return cls.from_llm_text(text)
 
 
+def warm_start(theory: XSLTheory, sources: Sequence[dict[str, float]]) -> dict[str, float]:
+    """Starting values for `theory`'s fit: each free parameter (and the reserved
+    `lapse` / `ability_sd`) from the first source fit that has a parameter of
+    that name. Candidates are usually edits of the running best or of the top
+    leaderboard theory, so shared names usually mean shared roles; anything
+    unmatched starts at its range midpoint."""
+    names = [*theory.free_parameters, "lapse", "ability_sd"]
+    out: dict[str, float] = {}
+    for name in names:
+        for src in sources:
+            if name in src:
+                out[name] = float(src[name])
+                break
+    return out
+
+
 @dataclass
 class GeneratorResult:
     best: Iteration
@@ -130,9 +146,15 @@ class XSLTheoryGenerator:
                     break
                 continue
 
-            fit = fit_theory(theory, self.conditions, budget=self.budget)
+            # warm-start from the running best, then the leaderboard (best first):
+            # single cold starts left several 8-10 parameter theories hundreds of
+            # NLL from their optimum
+            sources = ([best.fit.params] if best is not None else []) + [
+                e.fit.params for e in sorted(leaderboard, key=lambda e: e.score)]
+            x0 = warm_start(theory, sources)
+            fit = fit_theory(theory, self.conditions, budget=self.budget, x0=x0)
             cv = cross_validate_theory(theory, self.conditions, k=self.cv_folds,
-                                       budget=self.budget, workers=self.cv_workers)
+                                       budget=self.budget, workers=self.cv_workers, x0=fit.params)
             it = Iteration(candidate=theory, fit=fit, accepted=False, cv=cv)
             it.accepted = best is None or it.score < best.score
             if it.accepted:

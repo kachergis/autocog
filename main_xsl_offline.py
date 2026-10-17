@@ -2,8 +2,9 @@
 
 No new data is collected and there is no debate yet: each round, an LLM
 theory generator proposes a new XSL theory (prose + `learn` function), every
-candidate is fitted to the XSLmodels corpus by group NLL (by default the
-binomial likelihood of item-level accuracy; --objective) and scored by
+candidate is fitted to the XSLmodels corpus by likelihood (by default the
+per-subject random-ability likelihood, which models individual differences;
+--objective binomial / multinomial for item-level counts) and scored by
 5-fold cross-validation over conditions (held-out NLL), and a critic steers
 the next revision. The best candidate of each round joins the leaderboard,
 which starts from the fitted seed theories.
@@ -156,8 +157,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--guide", default=DEFAULT_GUIDE)
     p.add_argument("--popsize", type=int, default=FitBudget.popsize)
     p.add_argument("--maxiter", type=int, default=FitBudget.maxiter)
-    p.add_argument("--objective", choices=OBJECTIVES, default="binomial",
-                   help="likelihood to fit and score by (binomial = item-level accuracy)")
+    p.add_argument("--restarts", type=int, default=FitBudget.restarts,
+                   help="DE runs per fit; the first is warm-started from the closest existing fit")
+    p.add_argument("--objective", choices=OBJECTIVES, default="subject",
+                   help="likelihood to fit and score by: subject (per-person responses with random "
+                        "abilities; default), binomial (item-level accuracy), multinomial")
     p.add_argument("--lapse_max", type=float, default=FitBudget.lapse_max,
                    help="upper bound of the fitted guessing rate (lower it for sensitivity checks)")
     p.add_argument("--incumbents", action="store_true",
@@ -240,7 +244,7 @@ def ensure_cv(entries: list[Entry], conditions: list[Condition], *, k: int, budg
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     budget = FitBudget(popsize=args.popsize, maxiter=args.maxiter, lapse_max=args.lapse_max,
-                       objective=args.objective)
+                       objective=args.objective, restarts=args.restarts)
     conditions = load_corpus()
     run_dir: Path = args.out
     entries = load(run_dir, conditions, args.objective)

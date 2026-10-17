@@ -214,3 +214,24 @@ def test_prompt_describes_the_objective() -> None:
 
     assert "ACCURACY" in domain_text(100, "binomial")
     assert "WHICH wrong object" in domain_text(100, "multinomial")
+
+
+def test_warm_start_takes_shared_names_in_priority_order() -> None:
+    from src.xsl.generator import warm_start
+
+    theory = XSLTheory(theory="t", learn=COUNTING["learn"], parameters={"a": "[0, 1]", "z": "[0, 9]"})
+    x0 = warm_start(theory, [{"a": 0.2, "lapse": 0.01}, {"a": 0.9, "z": 4.0, "ability_sd": 1.5}])
+    assert x0 == {"a": 0.2, "z": 4.0, "lapse": 0.01, "ability_sd": 1.5}
+    assert warm_start(theory, []) == {}
+
+
+def test_generator_runs_under_the_subject_objective(conditions) -> None:
+    budget = FitBudget(popsize=3, maxiter=3, polish=False, objective="subject")
+    base = XSLTheory.from_yaml("theories/xsl/baseline.yaml")
+    board = [Entry(label="baseline", theory=base, fit=fit_theory(base, conditions, budget=budget),
+                   cv=cross_validate_theory(base, conditions, k=2, budget=budget))]
+    client = FakeClient([json.dumps(COUNTING), critique("continue")])
+    gen = XSLTheoryGenerator(llm_client=client, conditions=conditions, budget=budget, cv_folds=2)
+    result = gen.propose_theory(guide="g", leaderboard=board, max_iters=1)
+    assert "ability_sd" in result.best.fit.params
+    assert result.best.cv is not None and result.best.fit.evaluation.objective == "subject"

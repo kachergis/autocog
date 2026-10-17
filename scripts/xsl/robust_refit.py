@@ -58,7 +58,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--source", type=Path, required=True, help="run directory holding leaderboard.json")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--labels", nargs="+", required=True)
-    p.add_argument("--objective", choices=OBJECTIVES, default="binomial")
+    p.add_argument("--objective", choices=OBJECTIVES, default="subject")
     p.add_argument("--source_objective", choices=OBJECTIVES, default=None,
                    help="objective the --source run was scored with (default: --objective); its fits "
                         "only seed the warm start")
