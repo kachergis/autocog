@@ -251,6 +251,32 @@ def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Co
     )
 
 
+_GH40_NODES, _GH40_WEIGHTS = np.polynomial.hermite.hermgauss(40)
+
+
+def population_accuracy(learner: Learner, params: dict[str, float], condition: Condition) -> np.ndarray:
+    """Predicted mean accuracy per item across people.
+
+    Under the random-ability objective a person's accuracy on item i is
+    (1 - lapse) * logistic(logit p_i + u) + lapse / n_choices_i with u ~ N(0,
+    ability_sd^2), so the population mean is that averaged over u (40-node
+    Gauss-Hermite; the integrand is smooth). Without `ability_sd` this is the
+    usual lapse-mixed accuracy.
+    """
+    m = learner(params, condition.positional_trials, len(condition.words), len(condition.objects))
+    p = predict_accuracy(m, condition, d=params.get("ch_dec"))
+    lapse = params.get(LAPSE, 0.0)
+    k = n_choices_per_item(condition)
+    sd = params.get(ABILITY_SD, 0.0)
+    if sd <= 0:
+        return (1 - lapse) * p + lapse / k
+    pc = np.clip(p, _P_CLIP, 1 - _P_CLIP)
+    eta = np.log(pc) - np.log1p(-pc)
+    u = np.sqrt(2.0) * sd * _GH40_NODES
+    mean_q = (_GH40_WEIGHTS[:, None] / np.sqrt(np.pi) / (1.0 + np.exp(-(eta[None, :] + u[:, None])))).sum(axis=0)
+    return (1 - lapse) * mean_q + lapse / k
+
+
 @dataclass
 class FitResult:
     params: dict[str, float]

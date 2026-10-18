@@ -151,9 +151,19 @@ class XSLTheoryGenerator:
         leaderboard: Sequence[Entry],
         max_iters: int = 5,
         workspace: Path | None = None,
+        start: Entry | None = None,
     ) -> GeneratorResult:
+        """Run the propose -> fit -> critique loop.
+
+        With `start` (a fitted, cross-validated theory, e.g. the one a debate
+        arbiter wants revised) the loop begins with it as the running best, so
+        a candidate is accepted only if it beats it; if none does, the result's
+        best is `start` itself.
+        """
         history: list[Iteration] = []
         best: Iteration | None = None
+        if start is not None:
+            best = Iteration(candidate=start.theory, fit=start.fit, accepted=True, cv=start.cv)
 
         for crit in range(max_iters):
             system, user = render_generation(
