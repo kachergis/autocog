@@ -1,10 +1,11 @@
 # Offline AutoCog for cross-situational word learning: mode-B results
 
-Status: **draft, 2026-10-16.** Nine generator rounds, then a re-evaluation of
+Status: **draft, 2026-10-17.** Nine generator rounds, then a re-evaluation of
 every theory on corrected data, against the xsl-bakeoff incumbents: first
 under an item-accuracy objective (with robust fits and a guessing-rate
 sensitivity check), then under a per-subject random-ability likelihood that
-models individual differences directly.
+models individual differences directly; then three more generator rounds
+under that likelihood.
 Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 
 | run | what | directory |
@@ -14,6 +15,8 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 | robust | top 10 refit with warm-started multi-start fits | [`results/xsl/binomial_e70c10c_robust/`](../results/xsl/binomial_e70c10c_robust/) |
 | sensitivity | top 7 refit with the guessing rate capped at .10 | [`results/xsl/binomial_e70c10c_lapse10/`](../results/xsl/binomial_e70c10c_lapse10/) |
 | random ability | top 10 refit on per-subject responses with random abilities (robust fits) | [`results/xsl/subject_e70c10c_robust/`](../results/xsl/subject_e70c10c_robust/) |
+| generation 2 | 3 more rounds (`xsl_10`–`12`) under the random-ability objective, full incumbent field on the leaderboard | [`results/xsl/mode_b_subject/`](../results/xsl/mode_b_subject/) |
+| honest re-evaluation | `xsl_10`–`12` refit with the parameters they had hard-coded freed | [`results/xsl/mode_b_subject_unpinned/`](../results/xsl/mode_b_subject_unpinned/) |
 
 ## Summary
 
@@ -30,6 +33,15 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
   best incumbent fazly 0.504). Under the item-count binomial it led fazly by 312, and beat
   it on 33 of 47 conditions. It is over-parameterised: several parameters
   fit at their bounds.
+- **Three more rounds under the random-ability objective** produced `xsl_12`,
+  which adds exposure-scaled encoding (diminishing returns for frequently
+  heard words) to `xsl_09` and, evaluated honestly, predicts held-out
+  conditions 16 NLL better (16,905.5 vs 16,921.7; one more parameter, equal
+  held-out wSSE). The generator first presented `xsl_10`–`12` as leaner
+  versions of `xsl_09`, but they had hard-coded six of its fitted values —
+  values fitted on every condition, so their CV scores leaked held-out data.
+  Freed, `xsl_10` collapses to exactly `xsl_09`. The loop now refits such
+  pinned copies automatically.
 - **Under the random-ability likelihood every generated theory out-predicts
   every incumbent.** The interference + test-time claim competition family
   (`xsl_04`–`06`, 8–10 parameters) comes second to fourth; the larger
@@ -251,9 +263,44 @@ the multinomial objective — is now `xsl_09`'s largest gain. Its losses are
 concentrated in short filtering designs, 301, and the frequency-manipulated
 4×4 conditions.
 
+## Generation under the random-ability objective (rounds 10–12)
+
+Three more rounds, seeded with the 14-theory random-ability leaderboard
+(`xsl_03`–`09`, all six incumbents, kachergis, baseline), with each
+candidate's fit warm-started from the running best or the leaderboard and its
+CV folds from its own full fit. LLM cost ≈ $0.85 (logged tokens).
+
+| theory | what it adds to `xsl_09` | k | held-out NLL as generated | held-out NLL, honest | held-out wSSE, honest |
+|---|---|---|---|---|---|
+| `xsl_12` | encoding efficiency scales with a word's accumulated exposure; fitted `kappa` −0.41 (−0.30 to −0.44 in every fold): diminishing returns | 16 | 16,897.6 | **16,905.5** | 0.436 |
+| `xsl_11` | a weak, competition-free familiarity trace of raw co-occurrence counts added at test (`g2` .015, positive in every fold) | 16 | 16,914.5 | 16,913.6 | 0.431 |
+| `xsl_09` | — | 15 | — | 16,921.7 | 0.433 |
+| `xsl_10` | nothing: "streamlined" `xsl_09` | 15 | 16,913.8 | 16,922.0 | 0.433 |
+
+**Leakage through pinned constants.** All three new theories declared six of
+`xsl_09`'s parameters (`lam` 6, `Mmax` 30, `rho` .15, `th` .79, `kc` 25,
+`xi` 1) as fixed numbers — exactly `xsl_09`'s full-corpus fitted values,
+which the generator sees on the leaderboard. Because those values were fitted
+on all 47 conditions, every cross-validation fold inherited information from
+its own held-out conditions, and the reported k (9–10) understated the
+parameters actually tuned to the data. "Honest" above refits each with those
+six free over `xsl_09`'s ranges, in every fold: `xsl_10` then converges to
+exactly `xsl_09`'s fit (full NLL 16,863.2 both), so its apparent advantage
+was entirely leakage; `xsl_12` loses ~8 of its gain but keeps a real 16-NLL
+improvement; `xsl_11` is unaffected. The loop now refits any parameter a
+candidate pins to a constant when a leaderboard theory fits a parameter of
+that name (counted in k), and the prompt says so.
+
+**A labelling bug** in the first attempt (new theories were numbered by
+counting existing `xsl_` labels, so the first new one was saved as a second
+`xsl_08`) was caught after one round and fixed: labels now continue from the
+highest number and duplicate labels cannot be saved.
+
+`xsl_12` still fits `lam` and `xi` at their upper bounds, like `xsl_09`.
+
 ## How the theories were found
 
-The nine generator rounds ran under the multinomial objective on the
+The first nine generator rounds ran under the multinomial objective on the
 `2999e8b` export, so their numbers below are not comparable with the tables
 above; they record what the loop did.
 
@@ -350,26 +397,29 @@ matched the logged tokens and no hidden resamples or retries appear in the
 run logs, so ≈ $28 of earlier spend is unaccounted for — other use of the key
 or billing not visible in per-call usage. OpenRouter's Activity page will
 settle it; treat ≈ $0.30 per round as a lower bound. The re-evaluation
-(re-score, robust refits, sensitivity) used no LLM calls.
+(re-score, robust refits, sensitivity) used no LLM calls. Rounds 10–12 cost
+≈ $0.85 in logged tokens (including the stopped round).
 
 ## Next steps
 
-1. **Adopt the random-ability likelihood as the default objective** for
-   further generation, with `lapse` fixed at 0 (it fits to its floor
-   everywhere) — one fewer parameter per theory. Report held-out weighted SSE
-   alongside, since the two criteria can disagree.
-2. **Reparameterise `xsl_09`** (or fix its bounded parameters) and refit.
+1. Fix `lapse` at 0 under the random-ability objective (it fits to its floor
+   everywhere) — one fewer parameter per theory. (The random-ability
+   likelihood is now the default objective.)
+2. **Reparameterise the commitment-gated family** (`xsl_09`, `xsl_12`):
+   `lam` and `xi` still fit at their bounds. Ask the generator for it
+   explicitly, now that hard-coding fitted values is refitted.
 3. Robustly refit the remaining single-start theories (tilles,
    uncfam_attention, Bayesian_decay, `xsl_01`, `xsl_02`) and give `xsl_06` a
    start in `xsl_05`'s region.
 4. Evaluate the top theories once on the sealed holdouts (adults and children
    reported separately).
-5. Resume generation under the random-ability objective with the incumbents
-   and `xsl_09` on the leaderboard, using robust (warm-started) fits at the
-   accept gate where affordable.
+5. Continue generation under the random-ability objective (rounds 10–12
+   done) — the commitment-gated family is converging (variants within a few
+   NLL), so a structurally different seed or the Phase 2 debate is likely
+   more productive than more rounds of the same.
 6. Phase 2: seed a debate with structurally different theories (associative
-   vs hypothesis-testing). Phase 3: use `xsl_09` vs fazly to propose
-   discriminating designs (e.g. 215- vs 222-style orderings).
+   vs hypothesis-testing). Phase 3: use `xsl_12` vs fazly / kachergis to
+   propose discriminating designs (e.g. 215- vs 222-style orderings).
 
 ## Reproducing
 
@@ -397,6 +447,13 @@ Rscript scripts/xsl/export_subject_responses.R --xslmodels ../XSLmodels
 uv run python scripts/xsl/robust_refit.py --source results/xsl/binomial_e70c10c_robust \
     --source_objective binomial --objective subject --out results/xsl/subject_e70c10c_robust \
     --labels inc_fazly inc_uncfam_gamma kachergis xsl_03 xsl_07 xsl_08 xsl_09 xsl_04 xsl_05 xsl_06
+
+# generation under the random-ability objective (the default), seeded with those
+# fits plus the remaining incumbents
+cp results/xsl/subject_e70c10c_robust/leaderboard.json results/xsl/mode_b_subject/
+uv run python main_xsl_offline.py --n_rounds 0 --incumbents --out results/xsl/mode_b_subject
+uv run python main_xsl_offline.py --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5 \
+    --n_rounds 3 --max_iters 3 --out results/xsl/mode_b_subject
 ```
 
 Every generator and critic exchange is in `results/xsl/mode_b/round_NN/prompts/`;
