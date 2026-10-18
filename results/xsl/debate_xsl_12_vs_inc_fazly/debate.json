@@ -1,0 +1,198 @@
+{
+  "initial": [
+    "xsl_12",
+    "inc_fazly"
+  ],
+  "slots": [
+    "xsl_14",
+    "inc_fazly"
+  ],
+  "rounds": [
+    {
+      "slots": [
+        "xsl_12",
+        "inc_fazly"
+      ],
+      "outcomes": [
+        {
+          "proposer": "xsl_12",
+          "query": {
+            "conditions": [
+              "221",
+              "222"
+            ],
+            "metric_source": "def metric(acc):\n    return acc['222'].mean() - acc['221'].mean()",
+            "claim": "xsl_12 should match people better on the drop in accuracy from 1 word x 3 objects (222) to 1 word x 4 objects (221). The two conditions have the same 108 trials, the same 18-AFC test and 40 subjects each. Humans show about +0.20 (0.392 vs 0.190). xsl_12 predicts about +0.19 (0.488 vs 0.294). Its encoding efficiency enc = 1/(1+(no/c)^g) and its object-count-dependent interference (the (no/4)^p term) both worsen steeply as the number of objects per trial grows, and its contiguity boost helps in the smaller-ambiguity case. inc_fazly predicts only about +0.05 (0.377 vs 0.325). Its normalised alignment makes accuracy depend only weakly on the number of candidate objects, so it underestimates the cost of the extra object."
+          },
+          "human": 0.20138888888888887,
+          "human_se": 0.04972403525042384,
+          "predictions": {
+            "xsl_12": 0.19363516063374508,
+            "inc_fazly": 0.05251190952001866
+          },
+          "separable": true,
+          "winner": "xsl_12"
+        },
+        {
+          "proposer": "inc_fazly",
+          "query": {
+            "conditions": [
+              "filt3E_9L",
+              "filt6E_9L",
+              "filt9E_9L"
+            ],
+            "metric_source": "def metric(acc):\n    return float(np.mean([acc['filt3E_9L'].mean(), acc['filt6E_9L'].mean(), acc['filt9E_9L'].mean()]))",
+            "claim": "inc_fazly should match people better. In the 12x12, 2x2 conditions with 9 late trials per word, human accuracy is about 0.59, and inc_fazly predicts about 0.59 (mean over the three conditions). xsl_12 predicts only about 0.49. Fazly's mechanism accumulates alignment mass with each repeated, consistent co-occurrence. Its probabilities sharpen steadily with exposure and keep benefiting from the extra repetitions. xsl_12 has diminishing returns on exposure (negative kappa), and its commitment-gated exclusion and interference cap how far accuracy rises with repetition. It therefore under-predicts these high-repetition conditions by about 0.1, which is several standard errors of the human value."
+          },
+          "human": 0.5887096774193546,
+          "human_se": 0.022156279804513825,
+          "predictions": {
+            "xsl_12": 0.4911193583712765,
+            "inc_fazly": 0.5941496295921963
+          },
+          "separable": true,
+          "winner": "inc_fazly"
+        }
+      ],
+      "failures": {
+        "xsl_12": [],
+        "inc_fazly": []
+      },
+      "verdict": {
+        "interpretation": "The round split. xsl_12 won the 221 vs 222 contrast. Humans lose about 0.20 going from 3 to 4 objects per trial, xsl_12 predicts +0.19, and inc_fazly predicts only +0.05, 3 SE off. So xsl_12's object-count-dependent encoding and interference is a real mechanism that Fazly lacks. inc_fazly won on the late-repetition filler conditions (filt*E_9L). Humans reach about 0.59 there, Fazly gets 0.59, and xsl_12 gets 0.49, 4.4 SE low. In xsl_12 accuracy is flat or falling as extra trials are added (filt3E_9L 0.50, filt6E_9L 0.49, filt9E_9L 0.48). It does not benefit from repetition in the 12x12, 2x2 designs. The same pattern shows up elsewhere: 220 (0.476 vs human 0.685), 215 (0.505 vs 0.744), and 225 (0.63 vs 0.79). xsl_12 under-predicts conditions where learning is easy and repetition should pay off. The culprits are the negative kappa, which gives diminishing returns on exposure, plus erosion of links to absent partners and exclusion. These cap and even erode strong, consistent associations. On held-out fit xsl_12 is better overall (NLL 16905 vs 17154, wSSE 0.436 vs 0.504). Fazly is also far worse on the 3x4 and 4x4 high-ambiguity conditions, where it is 0.1 or more too high. xsl_12 is therefore the stronger base and its failures are localized, so it should be revised rather than replaced.",
+        "target": 1,
+        "verdict": "new_model",
+        "recommendation": "Keep xsl_12's competitive, interference-limited architecture, the load-dependent encoding, and the contiguity boost. Fix its handling of repetition in low-ambiguity, high-repetition regimes. (1) Remove or sign-flip the negative kappa exposure term. Replace it with a term that depends on how consistent a word's evidence is, so that a word whose top object has co-occurred on nearly every exposure gets an increasing, not decreasing, gain: expo = (1 + cnt*consistency)^kappa_pos, with kappa_pos >= 0. Keep diminishing returns only for words whose evidence is conflicting. (2) Make retrieval-induced interference on absent partners proportional to competing mass. This stops it from eroding a well-supported committed pair when the other word and object on the trial are fillers or unambiguous. Gate this with commit, so deff is scaled by (1 - commit*ratio) for the committed object's link. (3) Let commitment exclusion only redistribute credit away from claimed objects and never reduce the committed pair's own gain. Check the changes against 221/222, where the object-count effect must be kept, and against filt*_9L, 215, 220 and 225, where accuracy should rise by about 0.1 with repetition."
+      },
+      "target_label": "xsl_12",
+      "revised_label": "xsl_13",
+      "revised_score": 16886.623300555908
+    },
+    {
+      "slots": [
+        "xsl_13",
+        "inc_fazly"
+      ],
+      "outcomes": [
+        {
+          "proposer": "xsl_13",
+          "query": {
+            "conditions": [
+              "216",
+              "219"
+            ],
+            "metric_source": "def metric(acc):\n    return 0.5*(acc['216'].mean()+acc['219'].mean())",
+            "claim": "On the 2-words x 3-objects designs with an 18-AFC test (216 and 219), people average about 0.56. xsl_13 predicts about 0.553 and inc_fazly about 0.455, so inc_fazly should be well outside the 2 SE threshold. xsl_13's commitment-gated, increasing-returns encoding lets repetition pay off in low-ambiguity trials. Consistent word-object pairs also get shielded from interference, and claimed objects are excluded from other words. Together these let learning build up in small, easy designs. inc_fazly's incremental alignment normalises across co-present objects and has no commitment or exclusion mechanism, so it consolidates consistent pairs too slowly and underpredicts accuracy in these conditions."
+          },
+          "human": 0.5632925724637681,
+          "human_se": 0.04307366323314081,
+          "predictions": {
+            "xsl_13": 0.5527010095694129,
+            "inc_fazly": 0.45489031851717576
+          },
+          "separable": true,
+          "winner": "xsl_13"
+        },
+        {
+          "proposer": "inc_fazly",
+          "query": {
+            "conditions": [
+              "filt6E_6L",
+              "filt9E_6L",
+              "filt9E_9L",
+              "2_x8_39_4x4",
+              "3_x8_369_4x4"
+            ],
+            "metric_source": "def metric(acc):\n    return float(np.mean([acc[k].mean() for k in ['filt6E_6L','filt9E_6L','filt9E_9L','2_x8_39_4x4','3_x8_369_4x4']]))",
+            "claim": "inc_fazly should match people better. Averaged over these five conditions, humans score about 0.49, inc_fazly about 0.49 and xsl_13 about 0.42. The five are the high-exposure filtered 2x2 conditions (6E_6L, 9E_6L, 9E_9L) and the two 4x4 mixed-frequency conditions. In all of them, repeated consistent word-object co-occurrences keep adding to the probability-normalised association. Fazly's alignment is competitive, so each word's meaning distribution sharpens steadily as evidence accumulates, and filler trials do not erode it. xsl_13 adds interference and exclusion penalties and a diminishing-returns exposure term (negative kappa) for words that have not committed. It therefore under-learns these conditions by about 0.06 to 0.1. Fazly's predictions sit within about 0.01 of the human values on the individual conditions."
+          },
+          "human": 0.4935751389538206,
+          "human_se": 0.020494390941737405,
+          "predictions": {
+            "xsl_13": 0.42373286014335954,
+            "inc_fazly": 0.49135015675109617
+          },
+          "separable": true,
+          "winner": "inc_fazly"
+        }
+      ],
+      "failures": {
+        "xsl_13": [],
+        "inc_fazly": []
+      },
+      "verdict": {
+        "interpretation": "The round splits. xsl_13 wins on 216/219 (2x3 designs, 18-AFC): 0.553 vs human 0.563, while inc_fazly sits 2.5 SE low. inc_fazly wins on the high-exposure filtered 2x2 conditions and the 4x4 mixed-frequency conditions: 0.491 vs human 0.494, while xsl_13 sits 3.4 SE low at 0.424. Earlier rounds show the same pattern. xsl_12 lost on filt*_9L by 4.4 SE, and the lineage's one clear win was on the sparse 221/222 conditions. The recurring xsl failure is under-learning where repetition of consistent pairs should keep paying off: filt6E/9E_6L, filt*_9L (0.47-0.50 vs human 0.51-0.60), 220 (0.48 vs 0.69), and 225 (0.62 vs 0.79). In these designs filler trials and extra exposure do not raise accuracy at all, and xsl's accuracy stays flat or falls as exposure grows. That points to the mechanisms that cap or erode learning with exposure: negative kappa (diminishing returns for uncommitted words), per-trial interference erosion (deff), and the commitment threshold. In 2x2 designs a word is often not yet committed (th=0.76), so it is stuck in the diminishing-returns regime and filler erosion eats its gains. inc_fazly, in contrast, accumulates without decay and so misses the cases where people use exclusion or mutual exclusivity: 215 (0.38 vs 0.74), 225, 220, 212, 2x3. It also over-predicts the hard, high-ambiguity conditions: 201-207 are all 0.1-0.15 too high. Held-out NLL favors xsl_13 (16887 vs 17154) and the per-condition NLL differences are mostly negative, so xsl_13 is the better base. Revise theory 1, keeping its core of competition, exclusion and a contiguity trace, and fix the exposure-dependence of its learning rate and erosion.",
+        "target": 1,
+        "verdict": "new_model",
+        "recommendation": "Keep xsl_13's central claim and replace the commitment-binary exposure and interference machinery with a cumulative-evidence gate. (1) Remove the negative-kappa diminishing returns, which are a main cause of the flat or declining accuracy with exposure in filt*_6L/9L and the 4x4 mixed-frequency conditions. Set the exposure exponent to a smooth non-negative function of the word's evidence concentration, for example e = kpos*conc, where conc = max_j rs_j (or 1 - normalized entropy of the word's row), instead of the sigmoid commit at th=0.76. Even partially-concentrated words should then get increasing returns. (2) Make interference erosion shielding graded by the same concentration: M[w,o] erodes by deff*(1 - rs_wo/mx)^k, not only for committed words. Also make deff for absent-partner erosion scale down for pairs with a long trace, so fillers cannot wash out consistent pairs in 2x2 designs. (3) Keep the exclusion term (xi) and the share^b test discount, since these produce the wins on 216/219/215/225, but apply the discount only after a word's own max row share exceeds a small threshold, so it does not suppress weak words in the high-ambiguity conditions 201-207, where xsl_13 is still too high. Refit d, kpos, and th (or drop th) after these changes, and check that filt6E_6L, filt9E_9L, 2_x8_39_4x4 and 3_x8_369_4x4 rise to about 0.5 without lowering 216/219."
+      },
+      "target_label": "xsl_13",
+      "revised_label": null,
+      "revised_score": null
+    },
+    {
+      "slots": [
+        "xsl_13",
+        "inc_fazly"
+      ],
+      "outcomes": [
+        {
+          "proposer": "xsl_13",
+          "query": {
+            "conditions": [
+              "207"
+            ],
+            "metric_source": "def metric(acc):\n    return float(acc['207'].mean())",
+            "claim": "In 4x4 +2w/o (207), people are near floor (about 0.10). xsl_13 predicts about 0.15 and inc_fazly about 0.26, so xsl_13 should be closer. With four words and four objects per trial and many words competing, xsl_13 applies load-dependent, interference-limited encoding. Words that have not committed get diminishing returns on exposure, and the encoding efficiency falls as objects per trial rise. Ambiguous high-load designs therefore stay near floor. inc_fazly has no load or interference limit. Its alignment normalisation keeps accumulating cross-situational evidence, so it overpredicts accuracy in this high-ambiguity condition."
+          },
+          "human": 0.10256410256410255,
+          "human_se": 0.009554356497765558,
+          "predictions": {
+            "xsl_13": 0.1498273169522709,
+            "inc_fazly": 0.25615994914135215
+          },
+          "separable": true,
+          "winner": "xsl_13"
+        },
+        {
+          "proposer": "inc_fazly",
+          "query": {
+            "conditions": [
+              "filt0E_3L",
+              "filt3E_3L",
+              "filt6E_3L",
+              "filt9E_3L",
+              "filt0E_9L",
+              "filt3E_9L",
+              "filt6E_9L",
+              "filt9E_9L"
+            ],
+            "metric_source": "def metric(acc):\n    lo = np.mean([acc[k].mean() for k in ['filt0E_3L','filt3E_3L','filt6E_3L','filt9E_3L']])\n    hi = np.mean([acc[k].mean() for k in ['filt0E_9L','filt3E_9L','filt6E_9L','filt9E_9L']])\n    return hi - lo",
+            "claim": "inc_fazly should match people better. The statistic is the accuracy gain from 3 to 9 late-trial repetitions in the 12x12 filtering designs, averaged over the four filler levels. Humans gain about 0.17. inc_fazly accumulates alignment mass with each repetition, and the correct pairing keeps gaining relative to the competitors, so it predicts a gain of about 0.145. xsl_13 saturates through its load and interference limits and its diminishing returns for uncommitted words. Its predicted gain is only about 0.04, so it underestimates how much repetition helps in these designs."
+          },
+          "human": 0.17340949820788526,
+          "human_se": 0.025833228254210666,
+          "predictions": {
+            "xsl_13": 0.042455828902390136,
+            "inc_fazly": 0.14497993377750873
+          },
+          "separable": true,
+          "winner": "inc_fazly"
+        }
+      ],
+      "failures": {
+        "xsl_13": [],
+        "inc_fazly": []
+      },
+      "verdict": {
+        "interpretation": "Theory 1 (xsl_13) wins the high-load floor query (207: 0.150 vs human 0.103, 4.9 SE off, while inc_fazly is 16.1 SE off). Its load and interference limits therefore capture something real about high-ambiguity designs. Its failure is the repetition effect in the 12x12 filtering designs: it predicts a 3-to-9 late-repetition gain of 0.04 against a human 0.17 (5.1 SE off). inc_fazly gets this gain right (1.1 SE off). Earlier rounds show the same pattern: xsl_12/13 underpredict filt*_9L and filt6E_6L-type conditions by 3-4 SE, and conditions 220 and 215 are also underpredicted. xsl_13's held-out NLL (16887) beats inc_fazly's (17154), so the overall framework is better. The weakness is local and mechanistic: the diminishing returns for uncommitted words (kappa=-0.6) and the weak, saturating commitment gain (kpos=0.04, Mmax\u22489.6) cap what repetition can add. Theory 2 has no load limit, overpredicts floor conditions, and is worse overall, so it is not the target. The fix for Theory 1 is a change to how repetition accumulates, not a new theory.",
+        "target": 1,
+        "verdict": "new_model",
+        "recommendation": "Keep the competitive, load-limited, commitment-gated exclusion core, and change how repetition is credited. (1) Remove the blanket diminishing-returns exponent on uncommitted words. Replace (1+cnt)^kappa, which depends on the word's total exposure count, with a penalty that depends on competition: scale the exponent by the entropy of the word's association row, or by the number of co-present candidate objects that still carry mass. Then a word in a low-ambiguity 2x2 filtering design with repeated consistent pairings keeps full or increasing returns. A word in a 4x4 high-ambiguity design with scattered evidence still stays near floor, so 207 is preserved. (2) Make the commitment gain grow with the count of consistent co-occurrences of the top pair, for example expo = (1+n_consistent)^kpos_eff with kpos_eff allowed up to about 0.5 or more. Also use a soft threshold on the margin between the top and second object. This lets late repetitions (3 to 9) lift the target pair beyond the saturation ceiling. (3) Raise or make Mmax dependent on the committed state, so that sat=1-M/Mmax does not clip the late-repetition gain. Refit the parameters so that the filt*_3L to filt*_9L gain is about 0.15-0.17 while 207 stays near 0.10."
+      },
+      "target_label": "xsl_13",
+      "revised_label": "xsl_14",
+      "revised_score": 16880.153578071353
+    }
+  ]
+}

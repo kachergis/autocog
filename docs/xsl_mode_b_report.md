@@ -1,11 +1,12 @@
 # Offline AutoCog for cross-situational word learning: mode-B results
 
-Status: **draft, 2026-10-17.** Nine generator rounds, then a re-evaluation of
+Status: **draft, 2026-10-18.** Nine generator rounds, then a re-evaluation of
 every theory on corrected data, against the xsl-bakeoff incumbents: first
 under an item-accuracy objective (with robust fits and a guessing-rate
 sensitivity check), then under a per-subject random-ability likelihood that
 models individual differences directly; then three more generator rounds
-under that likelihood.
+under that likelihood; then a three-round Phase 2 debate between `xsl_12` and
+fazly.
 Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 
 | run | what | directory |
@@ -17,6 +18,7 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 | random ability | top 10 refit on per-subject responses with random abilities (robust fits) | [`results/xsl/subject_e70c10c_robust/`](../results/xsl/subject_e70c10c_robust/) |
 | generation 2 | 3 more rounds (`xsl_10`–`12`) under the random-ability objective, full incumbent field on the leaderboard | [`results/xsl/mode_b_subject/`](../results/xsl/mode_b_subject/) |
 | honest re-evaluation | `xsl_10`–`12` refit with the parameters they had hard-coded freed | [`results/xsl/mode_b_subject_unpinned/`](../results/xsl/mode_b_subject_unpinned/) |
+| debate | Phase 2: `xsl_12` vs fazly, 3 rounds of corpus queries, arbitration and revision (`xsl_13`, `xsl_14`) | [`results/xsl/debate_xsl_12_vs_inc_fazly/`](../results/xsl/debate_xsl_12_vs_inc_fazly/) |
 
 ## Summary
 
@@ -42,6 +44,14 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
   values fitted on every condition, so their CV scores leaked held-out data.
   Freed, `xsl_10` collapses to exactly `xsl_09`. The loop now refits such
   pinned copies automatically.
+- **A Phase 2 debate (`xsl_12` vs fazly)** produced two accepted revisions,
+  `xsl_13` and `xsl_14` (held-out NLL 16,880.2, the new best), but **did not
+  fix the failure fazly exposed in all three rounds**: in the filtering
+  experiments people gain from late repetitions whatever the number of early
+  exposures, while the commitment-gated family loses most of that gain once
+  early exposures are added (`xsl_14` is still 4–5 SE off on fazly's
+  queries). The revisions added the requested repetition mechanisms, but the
+  fit turned them down: the whole-corpus likelihood does not reward them.
 - **Under the random-ability likelihood every generated theory out-predicts
   every incumbent.** The interference + test-time claim competition family
   (`xsl_04`–`06`, 8–10 parameters) comes second to fourth; the larger
@@ -70,8 +80,8 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
   not a nuisance**: capping it at .10 improved held-out prediction for fazly,
   `xsl_07` and `xsl_08` and worsened it for the others. The random-ability
   likelihood resolves this (see above).
-- LLM cost from logged tokens ≈ $3.8 for the nine rounds; the re-evaluation
-  used no LLM calls. The OpenRouter key reports more spend than the logged
+- LLM cost from logged tokens ≈ $3.8 for the nine rounds, ≈ $0.85 for
+  rounds 10–12, ≈ $1.04 for the debate; the re-evaluation used no LLM calls. The OpenRouter key reports more spend than the logged
   tokens explain (see *Cost*).
 
 ## Setup
@@ -298,6 +308,106 @@ highest number and duplicate labels cannot be saved.
 
 `xsl_12` still fits `lam` and `xi` at their upper bounds, like `xsl_09`.
 
+## Phase 2: debate between `xsl_12` and fazly
+
+`xsl_12` (best generated theory) against fazly (the incumbent closest to
+people's item accuracy, and structurally different). No hypothesis-testing
+models: too slow to fit. Each round
+([`main_xsl_debate.py`](../main_xsl_debate.py), [`src/xsl/debate.py`](../src/xsl/debate.py)):
+
+1. each side's advocate (an LLM given its theory, both theories' predicted
+   accuracy per condition and the human values) proposes a **corpus query**:
+   a set of conditions and a Python statistic of their per-item accuracies on
+   which its theory should match people better. Predictions are
+   population-mean accuracies under each theory's random-ability fit. A
+   query counts only if the two predictions differ by at least 2 standard
+   errors of the human value (bootstrapped over subjects); the theory closer
+   to people wins it. Up to 3 attempts, with feedback.
+2. an **arbiter** reads both outcomes, the running ledger and both theories'
+   held-out NLL, and picks a theory to revise, either keeping its central
+   claim (`new_model`) or replacing it (`new_theory`);
+3. the **generator** revises that theory (up to 3 candidates) with the
+   target itself as the bar: a revision replaces it, as a new `xsl_NN`, only
+   if its cross-validated held-out NLL is lower.
+
+### Queries
+
+Every query was separable, on the first attempt. Each side won its own query
+in every round. The table re-scores all six with the final theories (signed
+errors in human SE):
+
+| round | proposer | query | human | `xsl_12` | `xsl_13` | `xsl_14` | fazly |
+|---|---|---|---|---|---|---|---|
+| 1 | `xsl_12` | drop from 1w×3o (222) to 1w×4o (221) | 0.201 ± .050 | −0.2 | −0.3 | −0.3 | −3.0 |
+| 1 | fazly | mean of filt3E/6E/9E_9L | 0.589 ± .022 | −4.4 | −4.4 | −4.1 | +0.2 |
+| 2 | `xsl_13` | mean of 216, 219 | 0.563 ± .043 | −0.5 | −0.2 | −0.3 | −2.5 |
+| 2 | fazly | mean of filt6E_6L, filt9E_6L, filt9E_9L, 2_x8_39_4x4, 3_x8_369_4x4 | 0.494 ± .021 | −3.5 | −3.4 | −3.2 | −0.1 |
+| 3 | `xsl_13` | 207 (high ambiguity, near floor) | 0.103 ± .010 | +5.0 | +4.9 | +4.0 | +16.1 |
+| 3 | fazly | late-repetition gain: filt*_9L minus filt*_3L | 0.173 ± .026 | −5.1 | −5.1 | −4.8 | −1.1 |
+
+The generated family wins on load and ambiguity: the cost of an extra object
+per trial (fazly predicts a quarter of it), the 216/219 orderings, and the
+floor in 207 (fazly is 16 SE too high there). Fazly wins on repetition in
+the filtering experiments every time.
+
+### Verdicts and revisions
+
+The arbiter revised `xsl_12`/`xsl_13` in all three rounds (`new_model`
+each time), reasoning that its held-out NLL is far better and its failures
+are localised. Each time it diagnosed the same cause, in increasingly
+specific terms: the negative exposure exponent (`kappa`, diminishing returns
+for frequently heard words), erosion of links to absent partners, and
+exclusion eroding committed pairs.
+
+| round | revision | held-out NLL | what changed | outcome |
+|---|---|---|---|---|
+| 1 | `xsl_13` (18 params) | 16,886.6 | increasing returns `(1+cnt)^kpos` for committed words; erosion of committed links shielded | accepted; `kpos` fits to .04 (≈ off), `kappa` −0.60 |
+| 2 | 3 candidates | 16,889.9–16,898.9 | evidence-concentration exposure, graded shielding | none beat `xsl_13` |
+| 3 | `xsl_14` (17 params) | **16,880.2** | diminishing returns scaled by the row's ambiguity (inverse Simpson), committed gain grows with the pair's own count | accepted; `kpos` .20, `kappa` −0.90 |
+
+The revisions improve held-out prediction overall (−25 NLL, held-out wSSE
+0.436 → 0.400), and `xsl_14` is the new leader. But they barely move the
+queries fazly won (−4.4 → −4.1 SE): the generator added what the arbiter
+asked for, and the fit used little of it.
+
+### The filtering experiments
+
+The 12 `filt` conditions (338 subjects, 26% of all test choices) cross early
+exposures (0, 3, 6, 9) with late exposures (3, 6, 9):
+
+| | human 3L / 6L / 9L | `xsl_14` 3L / 6L / 9L | fazly 3L / 6L / 9L |
+|---|---|---|---|
+| 0E | .37 / .49 / .59 | .50 / .55 / .58 | .51 / .63 / .69 |
+| 3E | .45 / .48 / .58 | .46 / .48 / .51 | .47 / .57 / .62 |
+| 6E | .42 / .55 / .59 | .45 / .47 / .50 | .46 / .54 / .59 |
+| 9E | .41 / .51 / .60 | .45 / .47 / .50 | .45 / .53 / .57 |
+
+People gain about .17 from 3 to 9 late exposures at every early level, and
+early exposures cost nothing (if anything they help at 3L). **Both theories
+predict that early exposures hurt**, but differently: fazly keeps the late
+gain and is too high without early exposure; `xsl_14` keeps the late gain
+only without early exposure and is flat (+.05) once there are any. The
+debate queries averaged over early levels, so they saw only the second
+problem. This interaction is the sharpest open target in the corpus, and
+a natural discriminating design for Phase 3.
+
+### What the debate showed about the loop
+
+- **Queries work.** Bootstrapped human SE plus the 2-SE rule gave
+  unambiguous, interpretable wins, and the advocates found them at once.
+- **The accept gate and the debate pull apart.** Revisions are accepted on
+  whole-corpus held-out NLL, where a localised fix can be outweighed by small
+  losses elsewhere, so the fit is free to switch off the mechanism the
+  debate asked for (`xsl_13`'s `kpos` → .04). A revision gate that also
+  requires closing the query gap (e.g. accept only if held-out NLL does not
+  worsen *and* the lost query's error shrinks) would make the debate steer.
+- **The arbiter always revised the generated theory.** Fazly loses badly on
+  held-out NLL, so it was never the target; a debate between two theories
+  closer in overall fit would test the arbiter more.
+- Cost: ≈ $1.04 in logged tokens (299k input, 44k output) for 3 rounds;
+  wall time ≈ 8 hours, almost all of it fitting and cross-validating the 7
+  revision candidates.
+
 ## How the theories were found
 
 The first nine generator rounds ran under the multinomial objective on the
@@ -398,14 +508,16 @@ run logs, so ≈ $28 of earlier spend is unaccounted for — other use of the ke
 or billing not visible in per-call usage. OpenRouter's Activity page will
 settle it; treat ≈ $0.30 per round as a lower bound. The re-evaluation
 (re-score, robust refits, sensitivity) used no LLM calls. Rounds 10–12 cost
-≈ $0.85 in logged tokens (including the stopped round).
+≈ $0.85 in logged tokens (including the stopped round), and the three-round
+debate ≈ $1.04.
 
 ## Next steps
 
 1. Fix `lapse` at 0 under the random-ability objective (it fits to its floor
    everywhere) — one fewer parameter per theory. (The random-ability
    likelihood is now the default objective.)
-2. **Reparameterise the commitment-gated family** (`xsl_09`, `xsl_12`):
+2. **Reparameterise the commitment-gated family** (`xsl_09`, `xsl_12`,
+   `xsl_14`; all fit `lam` 6 and `xi` 1):
    `lam` and `xi` still fit at their bounds. Ask the generator for it
    explicitly, now that hard-coding fitted values is refitted.
 3. Robustly refit the remaining single-start theories (tilles,
@@ -413,13 +525,13 @@ settle it; treat ≈ $0.30 per round as a lower bound. The re-evaluation
    start in `xsl_05`'s region.
 4. Evaluate the top theories once on the sealed holdouts (adults and children
    reported separately).
-5. Continue generation under the random-ability objective (rounds 10–12
-   done) — the commitment-gated family is converging (variants within a few
-   NLL), so a structurally different seed or the Phase 2 debate is likely
-   more productive than more rounds of the same.
-6. Phase 2: seed a debate with structurally different theories (associative
-   vs hypothesis-testing). Phase 3: use `xsl_12` vs fazly / kachergis to
-   propose discriminating designs (e.g. 215- vs 222-style orderings).
+5. **Target the filtering interaction**: no theory gets "late repetitions
+   help, early exposures don't hurt". Either a directed generation round with
+   that as the guide, or a debate revision gate that requires the lost
+   query's error to shrink (see *What the debate showed*).
+6. Phase 3: propose discriminating designs between `xsl_14` and fazly —
+   early × late exposure crossed with load (objects per trial) is where they
+   disagree most, and both are wrong on part of it.
 
 ## Reproducing
 
@@ -454,6 +566,10 @@ cp results/xsl/subject_e70c10c_robust/leaderboard.json results/xsl/mode_b_subjec
 uv run python main_xsl_offline.py --n_rounds 0 --incumbents --out results/xsl/mode_b_subject
 uv run python main_xsl_offline.py --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5 \
     --n_rounds 3 --max_iters 3 --out results/xsl/mode_b_subject
+
+# Phase 2 debate, from the honest leaderboard (resumable; --rounds adds rounds)
+uv run python main_xsl_debate.py --a xsl_12 --b inc_fazly --rounds 3 \
+    --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5
 ```
 
 Every generator and critic exchange is in `results/xsl/mode_b/round_NN/prompts/`;

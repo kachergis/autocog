@@ -270,6 +270,16 @@ results/xsl/
    loop now shuffles by construction.
 
 2. **Retrospective debate.** Seeds kachergis vs propose-but-verify / pursuit.
+
+   **Status: built and run (2026-10-18), without hypothesis-testing models**
+   (too slow to fit): `xsl_12` vs fazly, 3 rounds. Advocates propose corpus
+   queries (conditions + a statistic of per-item accuracy) that count only
+   at ≥ 2 bootstrapped human SE between the theories' predictions; an arbiter
+   picks the theory to revise; the generator revises it with the target as
+   the bar on held-out NLL (`main_xsl_debate.py`, `src/xsl/debate.py`).
+   Result: two accepted revisions (`xsl_14`, held-out NLL 16,880.2, new best),
+   but the repetition failure fazly exposed (filtering experiments) persists;
+   see the mode-B report.
 3. **Prospective stream.** Design generator + validator, incumbent service,
    divergence-at-matched-fit acceptance, the queue.
 4. **Evaluation.** Holdout vs the bakeoff winner; ablations (no stream 2; A vs
