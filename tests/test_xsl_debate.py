@@ -10,7 +10,10 @@ import pytest
 
 import main_xsl_debate as debate_main
 from src.xsl.corpus import load_corpus
-from src.xsl.debate import SEPARATION, CorpusQuery, bootstrap_se, evaluate_query, human_accuracy
+from src.xsl.debate import (
+    SEPARATION, CorpusQuery, QueryGate, QueryOutcome, bootstrap_se, evaluate_query, human_accuracy,
+    lost_queries,
+)
 from src.xsl.fitting import FitBudget, cross_validate_theory, fit_theory
 from src.xsl.generator import XSLTheoryGenerator
 from src.xsl.prompts import Entry
@@ -160,3 +163,99 @@ def test_revision_must_beat_the_target(small, tmp_path) -> None:
     assert all(f.startswith("not separable") for f in record["failures"]["xsl_01"])
     assert record["revised_label"] is None and state["slots"] == ["xsl_01", "xsl_02"]
     assert [e.label for e in entries] == ["xsl_01", "xsl_02"]
+
+
+def _outcome(proposer, winner, human=0.5, se=0.01, preds=None):
+    q = CorpusQuery(conditions=["221"], metric="def metric(acc):\n    return acc['221'].mean()\n", claim="c")
+    return QueryOutcome(proposer=proposer, query=q, human=human, human_se=se,
+                        predictions=preds or {"T": 0.45, "O": 0.5}, separable=winner is not None, winner=winner)
+
+
+def test_lost_queries_are_the_separable_ones_the_target_did_not_win() -> None:
+    won, lost, tie = _outcome("T", "T"), _outcome("O", "O"), _outcome("O", None)
+    assert lost_queries([won, lost, tie], "T") == [lost]
+    assert lost_queries([won, lost, tie], "O") == [won]
+
+
+def test_query_gate_needs_both_nll_within_tolerance_and_a_smaller_query_error() -> None:
+    lost = _outcome("O", "O")  # target T is 5 SE off: 0.45 vs 0.50, SE 0.01
+    gate = QueryGate(target="T", target_nll=100.0, lost=[lost], nll_tolerance=10.0, query_gain=1.0)
+    assert gate.conditions == ["221"] and gate.required_errors() == [pytest.approx(4.0)]
+    at = lambda v: {"221": np.array([v, v])}  # noqa: E731
+    assert gate.check("worse NLL, fixes query", 109.0, at(0.49))["passed"]
+    assert not gate.check("NLL beyond tolerance", 111.0, at(0.49))["passed"]
+    assert not gate.check("lower NLL, query barely moves", 90.0, at(0.455))["passed"]
+    over = gate.check("overshoots", 100.0, at(0.535))
+    assert over["passed"] and over["queries"][0]["error_se"] == pytest.approx(3.5)
+    assert len(gate.checks) == 4
+    json.dumps(gate.to_json())  # recorded in debate.json
+    text = gate.describe()
+    assert "at most 110.0" in text and "within 4.0 SE" in text and "[0.4600, 0.5400]" in text
+    assert "NLL beyond tolerance: held-out NLL 111.0 (too high)" in text and "FAILED" in text
+    # nothing lost -> no query gains to ask for, so the gate falls back to a strictly lower NLL
+    bare = QueryGate(target="T", target_nll=100.0, lost=[], nll_tolerance=10.0, query_gain=1.0)
+    assert not bare.check("c", 105.0, {})["passed"] and bare.check("c", 99.0, {})["passed"]
+    assert "lower held-out NLL than 100.0" in bare.describe()
+
+
+def _gated_round(small, tmp_path, *, query_gain, max_iters):
+    """counting (xsl_01) vs uniform (inc_uniform): uniform loses both queries and is
+    revised into another counting learner, which has a far lower held-out NLL."""
+    lab = small[3].label  # mean accuracy in 204: uniform is ~2.7 SE off, counting ~0.5
+    uniform = XSLTheory(name="Uniform", theory="Nothing is learned.",
+                        learn="def learn(params, trials, n_words, n_objects):\n    return np.ones((n_words, n_objects))\n")
+    a, b = _entry("xsl_01", XSLTheory(**COUNTING), small), _entry("inc_uniform", uniform, small)
+    entries, by_label = [a, b], {"xsl_01": a, "inc_uniform": b}
+    query = json.dumps({"conditions": [lab], "metric": f"def metric(acc):\n    return acc['{lab}'].mean()\n",
+                        "claim": "counting learns"})
+    verdict = json.dumps({"interpretation": "i", "target": 2, "verdict": "new_theory", "recommendation": "r"})
+    critique = json.dumps({"interpretation": "i", "verdict": "regenerate", "rationale": "r"})
+    gen_turns = []
+    for k in range(max_iters):
+        gen_turns += [json.dumps({**COUNTING, "name": f"Counting v{k + 2}"}), critique]
+    client = FakeClient([query, query, verdict, *gen_turns])
+    gen = XSLTheoryGenerator(llm_client=client, conditions=small, budget=BUDGET, cv_folds=2)
+    state = {"initial": ["xsl_01", "inc_uniform"], "slots": ["xsl_01", "inc_uniform"], "rounds": []}
+    record = debate_main.debate_round(gen, state, entries, by_label, small, [], tmp_path, query_attempts=1,
+                                      max_iters=max_iters, gate="nll_and_query", nll_tolerance=0.0,
+                                      query_gain=query_gain)
+    assert not client.responses
+    return record, state, b
+
+
+def test_query_gate_accepts_a_revision_that_fixes_the_lost_queries(small, tmp_path) -> None:
+    record, state, target = _gated_round(small, tmp_path, query_gain=1.0, max_iters=1)
+    gate = record["gate"]
+    assert gate["gate"] == "nll_and_query" and gate["target"] == "inc_uniform"
+    assert len(gate["lost"]) == 2  # both sides' queries went to counting
+    (check,) = gate["checks"]
+    assert check["passed"] and check["heldout_nll"] < target.cv.heldout_nll
+    assert all(q["error_se"] <= q["target_error_se"] - 1.0 for q in check["queries"])
+    assert record["revised_label"] == "xsl_02" and state["slots"] == ["xsl_01", "xsl_02"]
+    json.dumps(state)
+    prompt = (tmp_path / "round_00" / "revision" / "prompts" / "generation_iter_00_attempt_00.md").read_text()
+    assert "ACCEPT GATE" in prompt and f"query on {small[3].label}" in prompt
+    debate_main.write_summary(tmp_path, state)
+    summary = (tmp_path / "debate.md").read_text()
+    assert "(nll_and_query gate): xsl_02 accepted" in summary and "Counting v2" in summary
+
+
+def test_query_gate_rejects_a_lower_nll_that_does_not_fix_the_lost_queries(small, tmp_path) -> None:
+    # the revision lowers held-out NLL, which the nll gate would accept, but no
+    # prediction can cut its query error by 1e6 SE
+    record, state, target = _gated_round(small, tmp_path, query_gain=1e6, max_iters=2)
+    checks = record["gate"]["checks"]
+    assert [c["passed"] for c in checks] == [False, False]
+    assert all(c["nll_passed"] and c["heldout_nll"] < target.cv.heldout_nll for c in checks)
+    assert record["revised_label"] is None and state["slots"] == ["xsl_01", "inc_uniform"]
+    # the second proposal is told how the first fared against the gate
+    second = (tmp_path / "round_00" / "revision" / "prompts" / "generation_iter_01_attempt_00.md").read_text()
+    assert "Gate results for candidates so far" in second and "Counting v2" in second
+    debate_main.write_summary(tmp_path, state)
+    assert "no revision passed the gate for inc_uniform" in (tmp_path / "debate.md").read_text()
+
+
+def test_the_cli_exposes_the_gate() -> None:
+    args = debate_main.parse_args(["--gate", "nll_and_query", "--nll_tolerance", "5", "--query_gain", "2"])
+    assert (args.gate, args.nll_tolerance, args.query_gain) == ("nll_and_query", 5.0, 2.0)
+    assert debate_main.parse_args([]).gate == "nll"

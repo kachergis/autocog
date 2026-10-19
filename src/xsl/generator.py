@@ -4,9 +4,10 @@ The XSL counterpart of `src.theory_generator.TheoryGenerator`, with the same
 loop contract:
 
   * the proposer always builds on the running-best ACCEPTED candidate;
-  * a candidate is ACCEPTED iff its held-out NLL (k-fold CV over
+  * by default a candidate is ACCEPTED iff its held-out NLL (k-fold CV over
     conditions, same split for every candidate) is strictly lower than the
-    running best's (iteration 0's first valid candidate auto-accepts);
+    running best's (iteration 0's first valid candidate auto-accepts); a
+    caller can pass its own gate (`propose_theory(accept=...)`);
   * a critic's "continue" ends the loop only if the candidate was accepted;
   * the loop returns the running-best accepted candidate.
 
@@ -19,7 +20,7 @@ group likelihood admitted candidates that fit better and generalised worse.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,11 @@ def warm_start(theory: XSLTheory, sources: Sequence[dict[str, float]]) -> dict[s
                 out[name] = float(src[name])
                 break
     return out
+
+
+def lower_heldout_nll(it: Iteration, best: Iteration | None) -> bool:
+    """The default accept gate: strictly lower held-out NLL than the running best."""
+    return best is None or it.score < best.score
 
 
 @dataclass
@@ -147,11 +153,12 @@ class XSLTheoryGenerator:
     def propose_theory(
         self,
         *,
-        guide: str,
+        guide: str | Callable[[], str],
         leaderboard: Sequence[Entry],
         max_iters: int = 5,
         workspace: Path | None = None,
         start: Entry | None = None,
+        accept: Callable[[Iteration, Iteration | None], bool] = lower_heldout_nll,
     ) -> GeneratorResult:
         """Run the propose -> fit -> critique loop.
 
@@ -159,6 +166,12 @@ class XSLTheoryGenerator:
         arbiter wants revised) the loop begins with it as the running best, so
         a candidate is accepted only if it beats it; if none does, the result's
         best is `start` itself.
+
+        `accept(candidate, running_best)` is the accept gate, called on every
+        fitted, cross-validated candidate (`running_best` is None only before
+        anything is accepted). `guide` may be a callable, re-read before each
+        proposal, so a caller's gate can report its verdicts back to the
+        proposer.
         """
         history: list[Iteration] = []
         best: Iteration | None = None
@@ -167,7 +180,8 @@ class XSLTheoryGenerator:
 
         for crit in range(max_iters):
             system, user = render_generation(
-                conditions=self.conditions, leaderboard=leaderboard, guide=guide,
+                conditions=self.conditions, leaderboard=leaderboard,
+                guide=guide() if callable(guide) else guide,
                 best=best, history=history, n_choices=self.n_choices,
                 objective=self.budget.objective,
             )
@@ -193,7 +207,7 @@ class XSLTheoryGenerator:
             cv = cross_validate_theory(theory, self.conditions, k=self.cv_folds,
                                        budget=self.budget, workers=self.cv_workers, x0=fit.params)
             it = Iteration(candidate=theory, fit=fit, accepted=False, cv=cv)
-            it.accepted = best is None or it.score < best.score
+            it.accepted = accept(it, best)
             if it.accepted:
                 best = it
             print(

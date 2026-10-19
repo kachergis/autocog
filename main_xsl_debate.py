@@ -11,8 +11,13 @@ conditions visible). Each round:
      NLL, and picks a theory to revise ('new_model' or 'new_theory');
   3. the theory generator revises it, starting from the target as the bar to
      beat; a revision replaces the target in its slot (and joins the
-     leaderboard as a new xsl_NN) only if its cross-validated held-out NLL is
-     lower.
+     leaderboard as a new xsl_NN) only if it passes the accept gate:
+       --gate nll (default): its cross-validated held-out NLL is lower;
+       --gate nll_and_query: its held-out NLL is at most --nll_tolerance
+         above the target's AND, on every query the target lost this round,
+         its error is at least --query_gain human SEs smaller (predictions from
+         its full fit, as for the queries). If the target lost no query, this
+         falls back to the nll gate.
 
     uv run python main_xsl_debate.py --a xsl_12 --b inc_fazly --rounds 3 \
         --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5
@@ -36,12 +41,12 @@ if str(ROOT) not in sys.path:
 import main_xsl_offline as runner  # noqa: E402
 from src.xsl.corpus import Condition, load_corpus  # noqa: E402
 from src.xsl.debate import (  # noqa: E402
-    CorpusQuery, DebateVerdict, QueryOutcome, Side, evaluate_query, ledger_block,
-    render_arbitration, render_query,
+    CorpusQuery, DebateVerdict, QueryGate, QueryOutcome, Side, evaluate_query, ledger_block,
+    lost_queries, render_arbitration, render_query,
 )
 from src.xsl.fitting import FitBudget, population_accuracy  # noqa: E402
-from src.xsl.generator import XSLTheoryGenerator, parse_reply  # noqa: E402
-from src.xsl.prompts import OUTPUT_RULES, Entry  # noqa: E402
+from src.xsl.generator import XSLTheoryGenerator, lower_heldout_nll, parse_reply  # noqa: E402
+from src.xsl.prompts import OUTPUT_RULES, Entry, Iteration  # noqa: E402
 
 DEFAULT_SOURCES = (ROOT / "results/xsl/mode_b_subject", ROOT / "results/xsl/mode_b_subject_unpinned")
 
@@ -56,6 +61,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--rounds", type=int, default=3, help="debate rounds to add on top of the saved state")
     p.add_argument("--max_iters", type=int, default=3, help="revision iterations per round")
     p.add_argument("--query_attempts", type=int, default=3)
+    p.add_argument("--gate", choices=("nll", "nll_and_query"), default="nll",
+                   help="accept gate for revisions (see above)")
+    p.add_argument("--nll_tolerance", type=float, default=10.0,
+                   help="nll_and_query: how far a revision's held-out NLL may rise above the target's")
+    p.add_argument("--query_gain", type=float, default=1.0,
+                   help="nll_and_query: human SEs by which a revision must cut its error on each lost query")
     p.add_argument("--llm_provider", default=None)
     p.add_argument("--llm_model", default=None)
     p.add_argument("--config", type=Path, default=ROOT / "configs/default.yaml")
@@ -80,8 +91,8 @@ def build_leaderboard(sources: list[Path], conditions: list[Condition]) -> list[
     return list(by_label.values())
 
 
-def predict(entry: Entry, conditions: list[Condition]) -> dict:
-    learn = entry.theory.learner()
+def predict(entry: Entry | Iteration, conditions: list[Condition]) -> dict:
+    learn = entry.candidate.learner() if isinstance(entry, Iteration) else entry.theory.learner()
     return {c.label: population_accuracy(learn, entry.fit.params, c) for c in conditions}
 
 
@@ -122,20 +133,39 @@ def arbitrate(gen: XSLTheoryGenerator, sides, conditions, predicted, round_outco
     raise RuntimeError(f"arbiter gave no valid verdict: {error}")
 
 
-def revision_guide(target: Side, verdict: DebateVerdict) -> str:
+def revision_guide(target: Side, verdict: DebateVerdict, gate: QueryGate | None = None) -> str:
     keep = ("Keep its central claim; change its mechanism or implementation."
             if verdict.verdict == "new_model" else
             "Replace it with a different account that fixes these failures.")
+    bar = (gate.describe() if gate is not None else
+           f"The revision must reach a lower held-out NLL than the CURRENT BEST CANDIDATE, which is "
+           f"{target.label} itself.")
     return (f"The debate arbiter asks you to revise {target.label} ({verdict.verdict}). {keep}\n"
             f"Arbiter's interpretation: {verdict.interpretation}\n"
             f"Recommendation: {verdict.recommendation}\n"
-            f"The revision must reach a lower held-out NLL than the CURRENT BEST CANDIDATE, which is "
-            f"{target.label} itself.")
+            f"{bar}")
+
+
+def query_gate_accept(gate: QueryGate, target: Entry, conditions: list[Condition]):
+    """`propose_theory` accept hook for `gate`: a candidate must pass the gate,
+    and among those that do, lower held-out NLL wins."""
+    needed = [c for c in conditions if c.label in set(gate.conditions)]
+
+    def accept(it: Iteration, best: Iteration | None) -> bool:
+        check = gate.check(it.candidate.name, it.score, predict(it, needed))
+        for q in check["queries"]:
+            print(f"[query gate] {it.candidate.name} on {', '.join(q['conditions'])}: "
+                  f"{q['target_error_se']:.1f} -> {q['error_se']:.1f} SE (needs <= {q['required_error_se']:.1f})")
+        first = best is None or best.candidate is target.theory
+        return check["passed"] and (first or it.score < best.score)
+
+    return accept
 
 
 def debate_round(gen: XSLTheoryGenerator, state: dict, entries: list[Entry], by_label: dict[str, Entry],
                  conditions: list[Condition], ledger: list[QueryOutcome], out: Path, *,
-                 query_attempts: int, max_iters: int) -> dict:
+                 query_attempts: int, max_iters: int, gate: str = "nll", nll_tolerance: float = 10.0,
+                 query_gain: float = 1.0) -> dict:
     """One round: two queries, a verdict, a revision attempt. Updates `state`
     (slots, rounds), `entries`, `by_label` and `ledger` in place."""
     r_idx = len(state["rounds"])
@@ -163,9 +193,17 @@ def debate_round(gen: XSLTheoryGenerator, state: dict, entries: list[Entry], by_
     record["target_label"] = target.label
     print(f"[debate round {r_idx}] verdict: revise {target.label} ({verdict.verdict})")
 
-    result = gen.propose_theory(guide=revision_guide(target, verdict), leaderboard=entries,
+    target_entry = by_label[target.label]
+    query_gate, accept = None, lower_heldout_nll
+    if gate == "nll_and_query":
+        query_gate = QueryGate(target=target.label, target_nll=target.cv.heldout_nll,
+                               lost=lost_queries(round_outcomes, target.label),
+                               nll_tolerance=nll_tolerance, query_gain=query_gain)
+        accept = query_gate_accept(query_gate, target_entry, conditions)
+    result = gen.propose_theory(guide=lambda: revision_guide(target, verdict, query_gate), leaderboard=entries,
                                 max_iters=max_iters, workspace=workspace / "revision",
-                                start=by_label[target.label])
+                                start=target_entry, accept=accept)
+    record["gate"] = query_gate.to_json() if query_gate is not None else {"gate": "nll"}
     record["revised_label"] = None
     record["revised_score"] = None
     if result.best.candidate is not target.theory:
@@ -179,7 +217,7 @@ def debate_round(gen: XSLTheoryGenerator, state: dict, entries: list[Entry], by_
         print(f"[debate round {r_idx}] {label} replaces {target.label}: held-out NLL "
               f"{target.cv.heldout_nll:.1f} -> {best.score:.1f}")
     else:
-        print(f"[debate round {r_idx}] no revision beat {target.label}")
+        print(f"[debate round {r_idx}] no revision of {target.label} passed the {gate} gate")
     state["rounds"].append(record)
     return record
 
@@ -196,8 +234,18 @@ def write_summary(out: Path, state: dict) -> None:
         v = r["verdict"]
         lines.append(f"\n**Verdict:** revise theory {v['target']} ({r['target_label']}), {v['verdict']}. "
                      f"{v['recommendation']}\n")
-        lines.append(f"**Revision:** {r['revised_label'] + ' accepted' if r['revised_label'] else 'no candidate beat ' + r['target_label']}"
+        gate = r.get("gate", {"gate": "nll"})
+        miss = "no candidate beat " if gate["gate"] == "nll" else "no revision passed the gate for "
+        lines.append(f"**Revision** ({gate['gate']} gate): "
+                     f"{r['revised_label'] + ' accepted' if r['revised_label'] else miss + r['target_label']}"
                      f"{' (held-out NLL ' + format(r['revised_score'], '.1f') + ')' if r['revised_label'] else ''}\n")
+        for c in gate.get("checks", []):
+            qs = "; ".join(f"{', '.join(q['conditions'])} {q['target_error_se']:.1f} -> {q['error_se']:.1f} SE"
+                           for q in c["queries"])
+            lines.append(f"- {c['name']}: held-out NLL {c['heldout_nll']:.1f}"
+                         f"{'; ' + qs if qs else ''}: {'passed' if c['passed'] else 'failed'}")
+        if gate.get("checks"):
+            lines.append("")
     (out / "debate.md").write_text("\n".join(lines) + "\n")
 
 
@@ -224,7 +272,8 @@ def main(argv: list[str] | None = None) -> None:
 
     for _ in range(args.rounds):
         debate_round(gen, state, entries, by_label, conditions, ledger, out,
-                     query_attempts=args.query_attempts, max_iters=args.max_iters)
+                     query_attempts=args.query_attempts, max_iters=args.max_iters, gate=args.gate,
+                     nll_tolerance=args.nll_tolerance, query_gain=args.query_gain)
         runner.save(out, entries)
         state_path.write_text(json.dumps(state, indent=2))
         write_summary(out, state)

@@ -149,6 +149,96 @@ def evaluate_query(query: CorpusQuery, proposer: str, conditions: Sequence[Condi
                         predictions=preds, separable=separable, winner=winner)
 
 
+@dataclass
+class QueryGate:
+    """Accept gate for a debate revision that must fix the queries its target lost.
+
+    A candidate passes iff its held-out NLL is at most `nll_tolerance` above
+    the target's AND, on every query in `lost`, its error (in human SEs, from
+    the candidate's full-fit population predictions) is at least `query_gain`
+    SEs below the target's. A lost query's loser is at least SEPARATION / 2 SEs
+    off by construction, so a gain of 1 SE is always reachable. With nothing
+    lost, the gate cannot ask for query gains and falls back to strictly lower
+    held-out NLL. Every `check` is kept in `checks`.
+    """
+
+    target: str
+    target_nll: float
+    lost: list[QueryOutcome]
+    nll_tolerance: float
+    query_gain: float
+    checks: list[dict] = field(default_factory=list)
+
+    @property
+    def conditions(self) -> list[str]:
+        """Condition labels the lost queries need predictions for."""
+        return sorted({lab for o in self.lost for lab in o.query.conditions})
+
+    def required_errors(self) -> list[float]:
+        return [o.errors_in_se()[self.target] - self.query_gain for o in self.lost]
+
+    def check(self, name: str, heldout_nll: float, predicted: dict[str, np.ndarray]) -> dict:
+        """Score a candidate. `predicted` maps condition label -> per-item population accuracy."""
+        queries = []
+        for o, need in zip(self.lost, self.required_errors()):
+            value = o.query.value(predicted)
+            err = float(abs(value - o.human) / max(o.human_se, 1e-12))
+            queries.append({"conditions": o.query.conditions, "proposer": o.proposer, "value": value,
+                            "error_se": err, "target_error_se": o.errors_in_se()[self.target],
+                            "required_error_se": need, "passed": bool(err <= need)})
+        if self.lost:
+            nll_ok = bool(heldout_nll <= self.target_nll + self.nll_tolerance)
+        else:
+            nll_ok = bool(heldout_nll < self.target_nll)
+        passed = nll_ok and all(q["passed"] for q in queries)
+        record = {"name": name, "heldout_nll": float(heldout_nll), "nll_passed": nll_ok, "queries": queries,
+                  "passed": passed}
+        self.checks.append(record)
+        return record
+
+    def to_json(self) -> dict:
+        return {"gate": "nll_and_query", "target": self.target, "target_nll": self.target_nll,
+                "nll_tolerance": self.nll_tolerance, "query_gain": self.query_gain,
+                "lost": [o.to_json() for o in self.lost], "checks": self.checks}
+
+    def describe(self) -> str:
+        """The bar, for the generator prompt, with the verdict on every candidate so far."""
+        if not self.lost:
+            return (f"{self.target} lost no query this round, so a revision must reach a lower "
+                    f"held-out NLL than {self.target_nll:.1f}.")
+        lines = [f"ACCEPT GATE. A revision of {self.target} is accepted only if BOTH hold:",
+                 f"1. its held-out NLL is at most {self.target_nll + self.nll_tolerance:.1f} "
+                 f"({self.target}'s {self.target_nll:.1f} plus a tolerance of {self.nll_tolerance:g}); a "
+                 f"lower NLL is not required;",
+                 f"2. on every query below, which {self.target} lost this round, its prediction (population "
+                 f"mean of per-item accuracy, from its fit to the whole corpus) is at least "
+                 f"{self.query_gain:g} human SE closer to the human value than {self.target}'s."]
+        for o, need in zip(self.lost, self.required_errors()):
+            pred, need = o.predictions[self.target], max(need, 0.0)
+            lines.append(f"- query on {', '.join(o.query.conditions)}: human {o.human:.4f} (SE {o.human_se:.4f}); "
+                         f"{self.target} predicts {pred:.4f} ({o.errors_in_se()[self.target]:.1f} SE off); "
+                         f"a revision must be within {need:.1f} SE, i.e. in "
+                         f"[{o.human - need * o.human_se:.4f}, {o.human + need * o.human_se:.4f}].\n"
+                         f"  statistic:\n" + "\n".join("    " + ln for ln in o.query.metric_source.splitlines())
+                         + f"\n  claim of its proposer ({o.proposer}): {o.query.claim}")
+        lines.append("Every candidate is fitted to the whole corpus before it is checked, so a mechanism helps "
+                     "only if the fitted parameters keep it on.")
+        if self.checks:
+            lines.append("Gate results for candidates so far:")
+            for c in self.checks:
+                qs = "; ".join(f"{', '.join(q['conditions'])}: {q['error_se']:.1f} SE off "
+                               f"(needs <= {max(q['required_error_se'], 0.0):.1f})" for q in c["queries"])
+                lines.append(f"- {c['name']}: held-out NLL {c['heldout_nll']:.1f} "
+                             f"({'ok' if c['nll_passed'] else 'too high'}); {qs} -> "
+                             f"{'PASSED' if c['passed'] else 'FAILED'}")
+        return "\n".join(lines)
+
+
+def lost_queries(outcomes: Sequence[QueryOutcome], label: str) -> list[QueryOutcome]:
+    """The separable queries among `outcomes` that theory `label` lost."""
+    return [o for o in outcomes if o.separable and o.winner is not None and o.winner != label]
+
+
 class DebateVerdict(Promptable):
     interpretation: str = Field(
         ..., description="What this round's outcomes show about where each theory succeeds or fails, and why.")
