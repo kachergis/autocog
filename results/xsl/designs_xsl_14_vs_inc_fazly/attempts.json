@@ -1,0 +1,8168 @@
+[
+  {
+    "slot": 0,
+    "iter": 0,
+    "error": null,
+    "proposal": {
+      "name": "sparse_vs_dense_ambiguity_matched_exposure",
+      "rationale": "The design targets how each theory handles within-trial ambiguity when total exposure is held constant. In xsl_14, forgetting and interference scale with the number of objects per trial (deff grows with (no/4)^p and with the number of word-object pairs per trial). Its uncommitted-word returns are throttled when a word's row is spread over many objects, and committed pairs gain from clean repetition (kpos). So xsl_14 should do much better with sparse, clean repetition (1 word with a few objects per trial) than with dense trials (many words and many objects). inc_fazly has no capacity or interference cost. It simply accumulates alignments, and when several words are present they compete for each object (explaining away). That helps dense trials, whereas a single word per trial gets no cross-word competition and learns only from raw co-occurrence counts. Both arms use the same words, the same objects, the same number of exposures per word (6) and the same test (all objects as candidates). The only differences are the number of words and objects per trial and hence the number of trials. The contrast is mean accuracy in the sparse arm minus mean accuracy in the dense arm. It is positive and large for xsl_14, and about zero or negative for inc_fazly. The existing fits already point this way: 1x3 with 108 trials gives xsl_14 0.50 and fazly 0.38, while 4x4 with 27 trials gives xsl_14 0.34 and fazly 0.44.",
+      "generator_source": "def make_design(knobs, rng):\n    n = int(knobs.get('n', 18))\n    k = int(knobs['dense_k'])\n    so = int(knobs['sparse_o'])\n    reps = 6\n\n    def schedule(kk):\n        rem = np.full(n, reps, dtype=float)\n        out = []\n        while rem.sum() > 0:\n            noise = rng.random(n) * 1.2\n            score = np.where(rem > 0, rem + noise, -1.0)\n            idx = np.argsort(-score)[:kk]\n            idx = [int(i) for i in idx if rem[i] > 0]\n            for i in idx:\n                rem[i] -= 1\n            out.append(idx)\n        return out\n\n    # sparse arm: one word per trial, so objects per trial (one correct, rest random foils)\n    sp_trials = []\n    for sch in schedule(1):\n        w = sch[0]\n        others = [o for o in range(n) if o != w]\n        foils = [int(x) for x in rng.choice(others, size=so - 1, replace=False)]\n        objs = [w] + foils\n        objs = [int(objs[i]) for i in rng.permutation(len(objs))]\n        sp_trials.append([[int(w)], objs])\n\n    # dense arm: k words and their k objects per trial\n    de_trials = []\n    for sch in schedule(k):\n        ws = [int(x) for x in sch]\n        objs = [int(ws[i]) for i in rng.permutation(len(ws))]\n        de_trials.append([ws, objs])\n\n    def test(group):\n        order = rng.permutation(n)\n        return [{'word': int(w), 'candidates': list(range(n)), 'correct': int(w), 'group': group} for w in order]\n\n    return {'arms': {\n        'sparse': {'trials': sp_trials, 'test': test('sparse')},\n        'dense': {'trials': de_trials, 'test': test('dense')},\n    }}\n",
+      "knobs": {
+        "dense_k": [
+          3,
+          4
+        ],
+        "sparse_o": [
+          2,
+          3,
+          4
+        ],
+        "n": [
+          12,
+          18
+        ]
+      },
+      "contrast_source": "def contrast(acc, groups):\n    return float(np.mean(acc['sparse']) - np.mean(acc['dense']))\n",
+      "prediction": "The contrast is mean accuracy in the sparse arm minus mean accuracy in the dense arm, with 6 exposures per word in both. xsl_14 predicts a clearly positive value, roughly +0.15 to +0.2 (sparse about 0.5, dense about 0.3-0.35). The reasons are that clean sparse repetition keeps returns near-linear and commits pairs, while dense trials cause heavy forgetting, interference and ambiguity-throttled learning. inc_fazly predicts a value near zero or negative, roughly -0.05 to -0.1 (sparse about 0.38, dense about 0.43). It has no load cost, and its cross-word competition for objects helps dense trials, whereas a lone word per trial is learned only from co-occurrence counts. The midpoint is about +0.05, so the decision rule is: contrast above it picks xsl_14, below it picks inc_fazly."
+    },
+    "accepted": true,
+    "summary": "sparse_vs_dense_ambiguity_matched_exposure: 36/36 candidate designs valid; best setting dense_k=4, n=18, sparse_o=2 (seed 1): sparse: 18 words x 18 objects, 108 trials (1.0x2.0 per trial), 18 test items (18-AFC); dense: 18 words x 18 objects, 27 trials (4.0x4.0 per trial), 18 test items (18-AFC).\n  final estimate: predicted contrast xsl_14 +0.2474, inc_fazly +0.0427 (simulated SD 0.0575 / 0.0553 at N=50 per arm); decide xsl_14 if the contrast is on its side of +0.1450; P(correct | xsl_14) 0.964, P(correct | inc_fazly) 0.966; power 0.964",
+    "search_power": 0.98,
+    "power": {
+      "predicted": {
+        "xsl_14": 0.24737843428628303,
+        "inc_fazly": 0.04267455591963809
+      },
+      "threshold": 0.14502649510296056,
+      "hit_rate": {
+        "xsl_14": 0.964,
+        "inc_fazly": 0.966
+      },
+      "sim_sd": {
+        "xsl_14": 0.05746436782159708,
+        "inc_fazly": 0.05527270920090138
+      },
+      "power": 0.964,
+      "n_subj": 50,
+      "n_sims": 2000
+    },
+    "design": {
+      "name": "sparse_vs_dense_ambiguity_matched_exposure",
+      "knobs": {
+        "dense_k": 4,
+        "n": 18,
+        "sparse_o": 2
+      },
+      "seed": 1,
+      "arms": [
+        {
+          "name": "sparse",
+          "n_words": 18,
+          "n_objects": 18,
+          "n_trials": 108,
+          "trials": [
+            [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "12"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5",
+                "6"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8",
+                "1"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "15",
+                "0"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "7",
+                "0"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "12",
+                "4"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "13",
+                "7"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6",
+                "0"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "17",
+                "4"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7",
+                "2"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3",
+                "0"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "15",
+                "4"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "9",
+                "3"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "14",
+                "11"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "15",
+                "16"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "13",
+                "10"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "11",
+                "14"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2",
+                "16"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "2",
+                "15"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "1",
+                "9"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "17",
+                "13"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5",
+                "3"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "11",
+                "14"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2",
+                "11"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "7",
+                "4"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "16",
+                "2"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7",
+                "1"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "10",
+                "13"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "12",
+                "4"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "16",
+                "13"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0",
+                "6"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "4",
+                "8"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "15",
+                "6"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "17",
+                "1"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3",
+                "9"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "4",
+                "11"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "12",
+                "2"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "15",
+                "2"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "16",
+                "9"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5",
+                "6"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "6",
+                "11"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "10",
+                "11"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "13",
+                "12"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "6",
+                "9"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "5",
+                "6"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0",
+                "5"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7",
+                "4"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "8"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "13",
+                "3"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "8",
+                "4"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8",
+                "6"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "7",
+                "14"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "4",
+                "12"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "17",
+                "8"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5",
+                "0"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "7",
+                "11"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "4",
+                "10"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "4",
+                "16"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "8",
+                "7"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "5",
+                "0"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "17",
+                "9"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "1",
+                "3"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "2"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "15",
+                "10"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "1",
+                "17"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8",
+                "15"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "12",
+                "6"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "13",
+                "2"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "17",
+                "4"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "13",
+                "11"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "1",
+                "14"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "12",
+                "17"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "2",
+                "8"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "7",
+                "0"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "11",
+                "6"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "8",
+                "10"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "5",
+                "6"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "16",
+                "2"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "4",
+                "7"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "5",
+                "2"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "11",
+                "9"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "15",
+                "12"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "11",
+                "5"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "16"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "6",
+                "14"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3",
+                "4"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "2",
+                "17"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "12",
+                "4"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "10",
+                "4"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "13",
+                "0"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "13",
+                "4"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "6",
+                "15"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "17",
+                "0"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "10"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "4",
+                "11"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "12",
+                "11"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "9",
+                "1"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "2",
+                "17"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "16",
+                "13"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7",
+                "11"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8",
+                "3"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2",
+                "17"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3",
+                "17"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "8",
+                "6"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "7",
+                "13"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "2",
+                "14"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "2",
+                "10"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "8",
+                "5"
+              ]
+            ]
+          ],
+          "test": [
+            {
+              "word": "11",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "11",
+              "group": "sparse"
+            },
+            {
+              "word": "0",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "0",
+              "group": "sparse"
+            },
+            {
+              "word": "14",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "14",
+              "group": "sparse"
+            },
+            {
+              "word": "4",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "4",
+              "group": "sparse"
+            },
+            {
+              "word": "7",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "7",
+              "group": "sparse"
+            },
+            {
+              "word": "9",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "9",
+              "group": "sparse"
+            },
+            {
+              "word": "16",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "16",
+              "group": "sparse"
+            },
+            {
+              "word": "13",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "13",
+              "group": "sparse"
+            },
+            {
+              "word": "1",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "1",
+              "group": "sparse"
+            },
+            {
+              "word": "10",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "10",
+              "group": "sparse"
+            },
+            {
+              "word": "17",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "17",
+              "group": "sparse"
+            },
+            {
+              "word": "15",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "15",
+              "group": "sparse"
+            },
+            {
+              "word": "6",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "6",
+              "group": "sparse"
+            },
+            {
+              "word": "12",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "12",
+              "group": "sparse"
+            },
+            {
+              "word": "5",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "5",
+              "group": "sparse"
+            },
+            {
+              "word": "8",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "8",
+              "group": "sparse"
+            },
+            {
+              "word": "2",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "2",
+              "group": "sparse"
+            },
+            {
+              "word": "3",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "3",
+              "group": "sparse"
+            }
+          ]
+        },
+        {
+          "name": "dense",
+          "n_words": 18,
+          "n_objects": 18,
+          "n_trials": 27,
+          "trials": [
+            [
+              [
+                "4",
+                "15",
+                "13",
+                "16"
+              ],
+              [
+                "13",
+                "16",
+                "4",
+                "15"
+              ]
+            ],
+            [
+              [
+                "14",
+                "9",
+                "5",
+                "6"
+              ],
+              [
+                "5",
+                "14",
+                "6",
+                "9"
+              ]
+            ],
+            [
+              [
+                "17",
+                "2",
+                "0",
+                "7"
+              ],
+              [
+                "17",
+                "7",
+                "2",
+                "0"
+              ]
+            ],
+            [
+              [
+                "3",
+                "10",
+                "1",
+                "11"
+              ],
+              [
+                "11",
+                "10",
+                "3",
+                "1"
+              ]
+            ],
+            [
+              [
+                "8",
+                "12",
+                "2",
+                "3"
+              ],
+              [
+                "12",
+                "2",
+                "8",
+                "3"
+              ]
+            ],
+            [
+              [
+                "15",
+                "11",
+                "14",
+                "16"
+              ],
+              [
+                "11",
+                "15",
+                "14",
+                "16"
+              ]
+            ],
+            [
+              [
+                "13",
+                "5",
+                "10",
+                "17"
+              ],
+              [
+                "10",
+                "13",
+                "5",
+                "17"
+              ]
+            ],
+            [
+              [
+                "8",
+                "12",
+                "1",
+                "4"
+              ],
+              [
+                "4",
+                "12",
+                "8",
+                "1"
+              ]
+            ],
+            [
+              [
+                "0",
+                "9",
+                "6",
+                "7"
+              ],
+              [
+                "7",
+                "0",
+                "6",
+                "9"
+              ]
+            ],
+            [
+              [
+                "3",
+                "1",
+                "2",
+                "16"
+              ],
+              [
+                "16",
+                "1",
+                "2",
+                "3"
+              ]
+            ],
+            [
+              [
+                "9",
+                "14",
+                "13",
+                "4"
+              ],
+              [
+                "4",
+                "9",
+                "14",
+                "13"
+              ]
+            ],
+            [
+              [
+                "5",
+                "17",
+                "0",
+                "6"
+              ],
+              [
+                "5",
+                "6",
+                "17",
+                "0"
+              ]
+            ],
+            [
+              [
+                "10",
+                "15",
+                "12",
+                "1"
+              ],
+              [
+                "12",
+                "1",
+                "15",
+                "10"
+              ]
+            ],
+            [
+              [
+                "7",
+                "8",
+                "11",
+                "16"
+              ],
+              [
+                "7",
+                "11",
+                "8",
+                "16"
+              ]
+            ],
+            [
+              [
+                "0",
+                "17",
+                "6",
+                "7"
+              ],
+              [
+                "6",
+                "17",
+                "7",
+                "0"
+              ]
+            ],
+            [
+              [
+                "4",
+                "8",
+                "9",
+                "2"
+              ],
+              [
+                "9",
+                "4",
+                "8",
+                "2"
+              ]
+            ],
+            [
+              [
+                "14",
+                "3",
+                "12",
+                "5"
+              ],
+              [
+                "3",
+                "12",
+                "14",
+                "5"
+              ]
+            ],
+            [
+              [
+                "13",
+                "10",
+                "11",
+                "7"
+              ],
+              [
+                "11",
+                "10",
+                "13",
+                "7"
+              ]
+            ],
+            [
+              [
+                "15",
+                "17",
+                "9",
+                "2"
+              ],
+              [
+                "9",
+                "17",
+                "15",
+                "2"
+              ]
+            ],
+            [
+              [
+                "12",
+                "1",
+                "6",
+                "3"
+              ],
+              [
+                "3",
+                "1",
+                "6",
+                "12"
+              ]
+            ],
+            [
+              [
+                "8",
+                "11",
+                "15",
+                "16"
+              ],
+              [
+                "8",
+                "16",
+                "11",
+                "15"
+              ]
+            ],
+            [
+              [
+                "4",
+                "0",
+                "5",
+                "14"
+              ],
+              [
+                "14",
+                "5",
+                "0",
+                "4"
+              ]
+            ],
+            [
+              [
+                "10",
+                "13",
+                "17",
+                "5"
+              ],
+              [
+                "10",
+                "13",
+                "5",
+                "17"
+              ]
+            ],
+            [
+              [
+                "6",
+                "8",
+                "13",
+                "3"
+              ],
+              [
+                "6",
+                "13",
+                "8",
+                "3"
+              ]
+            ],
+            [
+              [
+                "10",
+                "9",
+                "0",
+                "14"
+              ],
+              [
+                "0",
+                "9",
+                "14",
+                "10"
+              ]
+            ],
+            [
+              [
+                "4",
+                "16",
+                "2",
+                "1"
+              ],
+              [
+                "2",
+                "1",
+                "4",
+                "16"
+              ]
+            ],
+            [
+              [
+                "7",
+                "15",
+                "12",
+                "11"
+              ],
+              [
+                "11",
+                "7",
+                "12",
+                "15"
+              ]
+            ]
+          ],
+          "test": [
+            {
+              "word": "8",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "8",
+              "group": "dense"
+            },
+            {
+              "word": "17",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "17",
+              "group": "dense"
+            },
+            {
+              "word": "0",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "0",
+              "group": "dense"
+            },
+            {
+              "word": "2",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "2",
+              "group": "dense"
+            },
+            {
+              "word": "15",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "15",
+              "group": "dense"
+            },
+            {
+              "word": "9",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "9",
+              "group": "dense"
+            },
+            {
+              "word": "4",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "4",
+              "group": "dense"
+            },
+            {
+              "word": "16",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "16",
+              "group": "dense"
+            },
+            {
+              "word": "1",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "1",
+              "group": "dense"
+            },
+            {
+              "word": "6",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "6",
+              "group": "dense"
+            },
+            {
+              "word": "14",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "14",
+              "group": "dense"
+            },
+            {
+              "word": "12",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "12",
+              "group": "dense"
+            },
+            {
+              "word": "3",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "3",
+              "group": "dense"
+            },
+            {
+              "word": "10",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "10",
+              "group": "dense"
+            },
+            {
+              "word": "13",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "13",
+              "group": "dense"
+            },
+            {
+              "word": "5",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "5",
+              "group": "dense"
+            },
+            {
+              "word": "7",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "7",
+              "group": "dense"
+            },
+            {
+              "word": "11",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "11",
+              "group": "dense"
+            }
+          ]
+        }
+      ]
+    },
+    "trials": [
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 2
+        },
+        "seed": 0,
+        "power": 0.7966666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 2
+        },
+        "seed": 1,
+        "power": 0.8533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 2
+        },
+        "seed": 2,
+        "power": 0.7466666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 3
+        },
+        "seed": 0,
+        "power": 0.7866666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 3
+        },
+        "seed": 1,
+        "power": 0.8066666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 3
+        },
+        "seed": 2,
+        "power": 0.8066666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 4
+        },
+        "seed": 0,
+        "power": 0.61,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 4
+        },
+        "seed": 1,
+        "power": 0.68,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 12,
+          "sparse_o": 4
+        },
+        "seed": 2,
+        "power": 0.6966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 2
+        },
+        "seed": 0,
+        "power": 0.7766666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 2
+        },
+        "seed": 1,
+        "power": 0.7866666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 2
+        },
+        "seed": 2,
+        "power": 0.7833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 3
+        },
+        "seed": 0,
+        "power": 0.81,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 3
+        },
+        "seed": 1,
+        "power": 0.78,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 3
+        },
+        "seed": 2,
+        "power": 0.77,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 4
+        },
+        "seed": 0,
+        "power": 0.6833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 4
+        },
+        "seed": 1,
+        "power": 0.6533333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 3,
+          "n": 18,
+          "sparse_o": 4
+        },
+        "seed": 2,
+        "power": 0.6433333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 2
+        },
+        "seed": 0,
+        "power": 0.9466666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 2
+        },
+        "seed": 1,
+        "power": 0.9533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 2
+        },
+        "seed": 2,
+        "power": 0.94,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 3
+        },
+        "seed": 0,
+        "power": 0.94,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 3
+        },
+        "seed": 1,
+        "power": 0.9433333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 3
+        },
+        "seed": 2,
+        "power": 0.9233333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 4
+        },
+        "seed": 0,
+        "power": 0.58,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 4
+        },
+        "seed": 1,
+        "power": 0.66,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 12,
+          "sparse_o": 4
+        },
+        "seed": 2,
+        "power": 0.5933333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 2
+        },
+        "seed": 0,
+        "power": 0.9533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 2
+        },
+        "seed": 1,
+        "power": 0.98,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 2
+        },
+        "seed": 2,
+        "power": 0.95,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 3
+        },
+        "seed": 0,
+        "power": 0.97,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 3
+        },
+        "seed": 1,
+        "power": 0.9733333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 3
+        },
+        "seed": 2,
+        "power": 0.95,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 4
+        },
+        "seed": 0,
+        "power": 0.6833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 4
+        },
+        "seed": 1,
+        "power": 0.71,
+        "error": null
+      },
+      {
+        "knobs": {
+          "dense_k": 4,
+          "n": 18,
+          "sparse_o": 4
+        },
+        "seed": 2,
+        "power": 0.7133333333333334,
+        "error": null
+      }
+    ],
+    "seconds": 2.8021827920456417
+  },
+  {
+    "slot": 1,
+    "iter": 0,
+    "error": null,
+    "proposal": {
+      "name": "retroactive_object_reappearance_decay",
+      "rationale": "The design targets one mechanism difference: xsl_14 has retrieval-induced interference and decay, and inc_fazly has none. In xsl_14, every time an object appears in a trial, M[:, objs] is multiplied by (1 - deff). That erodes every word's association to that object, including pairs learned earlier. Carrier words that co-occur with the object also add to its column mass, which lowers the old word's column-share term at test. In inc_fazly, a word's meaning probabilities are updated only when that word is heard, so later trials that do not contain the word cannot change its row. In block 1, 18 word-object pairs are trained identically (2x2 trials, interleaved). Half of them (the 'foil' set) then have their objects reappear many times in block 2 as distractors beside new carrier words. The other half ('ctrl') are never touched again. Foil and ctrl items are assigned at random and trained identically, so the contrast is a within-arm, within-person item contrast. Person ability cancels, which gives high power. The only difference between the item types is whether the object reappears later with other words. xsl_14 predicts that foil items are forgotten and ctrl items are better. inc_fazly predicts no difference, because the foil words' rows are untouched.",
+      "generator_source": "def make_design(knobs, rng):\n    reps = int(knobs['reps'])\n    k = int(knobs['k'])\n    perm = rng.permutation(18)\n    A = [int(x) for x in perm[:9]]\n    Aset = set(A)\n    trials = []\n    # block 1: 18 pairs, 2 words x 2 objects per trial, each word once per round\n    for _ in range(reps):\n        order = rng.permutation(18)\n        for i in range(0, 18, 2):\n            w1, w2 = int(order[i]), int(order[i + 1])\n            trials.append([[w1, w2], [w1, w2]])\n    # block 2: carrier word (18..26) with its own object plus 3 reappearing objects from set A\n    carriers = [int(x) + 18 for x in rng.permutation(9)]\n    t = 0\n    for _ in range(k):\n        f = [int(x) for x in rng.permutation(A)]\n        for j in range(3):\n            c = carriers[t % 9]\n            t += 1\n            objs = [c] + f[3 * j:3 * j + 3]\n            objs = [int(x) for x in rng.permutation(objs)]\n            trials.append([[c], objs])\n    test = []\n    for w in rng.permutation(18):\n        w = int(w)\n        test.append({'word': w, 'candidates': list(range(18)), 'correct': w,\n                     'group': 'foil' if w in Aset else 'ctrl'})\n    return {'arms': {'x': {'trials': trials, 'test': test}}}\n",
+      "knobs": {
+        "reps": [
+          4,
+          6,
+          8
+        ],
+        "k": [
+          6,
+          9,
+          12
+        ]
+      },
+      "contrast_source": "def contrast(acc, groups):\n    g = groups['x']\n    a = acc['x']\n    return a[g == 'ctrl'].mean() - a[g == 'foil'].mean()\n",
+      "prediction": "xsl_14 predicts a clearly positive contrast, roughly +0.15 to +0.30 (control minus foil), growing with k. Each reappearance of an object multiplies its column by about 0.85 (deff is roughly 0.15 for a 1x4 trial), so after 6-12 reappearances the old association is cut to about 0.4-0.15 of its value. Carrier words also add mass to that object's column, which lowers its share. inc_fazly predicts a contrast near 0 (within about \u00b10.03, i.e. noise only), because a word's meaning probabilities change only on trials where that word is heard. Foil and control words are trained identically, so the predicted accuracy difference is zero. The midpoint decision is therefore about +0.08 to +0.15."
+    },
+    "accepted": true,
+    "summary": "retroactive_object_reappearance_decay: 27/27 candidate designs valid; best setting k=9, reps=4 (seed 100000): x: 27 words x 27 objects, 63 trials (1.6x2.9 per trial), 18 test items (18-AFC).\n  final estimate: predicted contrast xsl_14 +0.1555, inc_fazly +0.0000 (simulated SD 0.0301 / 0.0279 at N=50 per arm); decide xsl_14 if the contrast is on its side of +0.0778; P(correct | xsl_14) 0.993, P(correct | inc_fazly) 0.997; power 0.993",
+    "search_power": 1.0,
+    "power": {
+      "predicted": {
+        "xsl_14": 0.15553895081068447,
+        "inc_fazly": 0.0
+      },
+      "threshold": 0.07776947540534224,
+      "hit_rate": {
+        "xsl_14": 0.993,
+        "inc_fazly": 0.997
+      },
+      "sim_sd": {
+        "xsl_14": 0.03013869798198626,
+        "inc_fazly": 0.027922188508623588
+      },
+      "power": 0.993,
+      "n_subj": 50,
+      "n_sims": 2000
+    },
+    "design": {
+      "name": "retroactive_object_reappearance_decay",
+      "knobs": {
+        "k": 9,
+        "reps": 4
+      },
+      "seed": 100000,
+      "arms": [
+        {
+          "name": "x",
+          "n_words": 27,
+          "n_objects": 27,
+          "n_trials": 63,
+          "trials": [
+            [
+              [
+                "1",
+                "12"
+              ],
+              [
+                "1",
+                "12"
+              ]
+            ],
+            [
+              [
+                "3",
+                "2"
+              ],
+              [
+                "3",
+                "2"
+              ]
+            ],
+            [
+              [
+                "10",
+                "7"
+              ],
+              [
+                "10",
+                "7"
+              ]
+            ],
+            [
+              [
+                "17",
+                "13"
+              ],
+              [
+                "17",
+                "13"
+              ]
+            ],
+            [
+              [
+                "9",
+                "8"
+              ],
+              [
+                "9",
+                "8"
+              ]
+            ],
+            [
+              [
+                "14",
+                "16"
+              ],
+              [
+                "14",
+                "16"
+              ]
+            ],
+            [
+              [
+                "15",
+                "11"
+              ],
+              [
+                "15",
+                "11"
+              ]
+            ],
+            [
+              [
+                "4",
+                "0"
+              ],
+              [
+                "4",
+                "0"
+              ]
+            ],
+            [
+              [
+                "5",
+                "6"
+              ],
+              [
+                "5",
+                "6"
+              ]
+            ],
+            [
+              [
+                "4",
+                "12"
+              ],
+              [
+                "4",
+                "12"
+              ]
+            ],
+            [
+              [
+                "15",
+                "0"
+              ],
+              [
+                "15",
+                "0"
+              ]
+            ],
+            [
+              [
+                "5",
+                "3"
+              ],
+              [
+                "5",
+                "3"
+              ]
+            ],
+            [
+              [
+                "8",
+                "11"
+              ],
+              [
+                "8",
+                "11"
+              ]
+            ],
+            [
+              [
+                "1",
+                "6"
+              ],
+              [
+                "1",
+                "6"
+              ]
+            ],
+            [
+              [
+                "17",
+                "9"
+              ],
+              [
+                "17",
+                "9"
+              ]
+            ],
+            [
+              [
+                "10",
+                "2"
+              ],
+              [
+                "10",
+                "2"
+              ]
+            ],
+            [
+              [
+                "14",
+                "13"
+              ],
+              [
+                "14",
+                "13"
+              ]
+            ],
+            [
+              [
+                "16",
+                "7"
+              ],
+              [
+                "16",
+                "7"
+              ]
+            ],
+            [
+              [
+                "4",
+                "8"
+              ],
+              [
+                "4",
+                "8"
+              ]
+            ],
+            [
+              [
+                "17",
+                "11"
+              ],
+              [
+                "17",
+                "11"
+              ]
+            ],
+            [
+              [
+                "3",
+                "2"
+              ],
+              [
+                "3",
+                "2"
+              ]
+            ],
+            [
+              [
+                "7",
+                "12"
+              ],
+              [
+                "7",
+                "12"
+              ]
+            ],
+            [
+              [
+                "15",
+                "14"
+              ],
+              [
+                "15",
+                "14"
+              ]
+            ],
+            [
+              [
+                "16",
+                "1"
+              ],
+              [
+                "16",
+                "1"
+              ]
+            ],
+            [
+              [
+                "6",
+                "0"
+              ],
+              [
+                "6",
+                "0"
+              ]
+            ],
+            [
+              [
+                "5",
+                "10"
+              ],
+              [
+                "5",
+                "10"
+              ]
+            ],
+            [
+              [
+                "13",
+                "9"
+              ],
+              [
+                "13",
+                "9"
+              ]
+            ],
+            [
+              [
+                "7",
+                "14"
+              ],
+              [
+                "7",
+                "14"
+              ]
+            ],
+            [
+              [
+                "12",
+                "1"
+              ],
+              [
+                "12",
+                "1"
+              ]
+            ],
+            [
+              [
+                "17",
+                "3"
+              ],
+              [
+                "17",
+                "3"
+              ]
+            ],
+            [
+              [
+                "6",
+                "9"
+              ],
+              [
+                "6",
+                "9"
+              ]
+            ],
+            [
+              [
+                "16",
+                "5"
+              ],
+              [
+                "16",
+                "5"
+              ]
+            ],
+            [
+              [
+                "2",
+                "8"
+              ],
+              [
+                "2",
+                "8"
+              ]
+            ],
+            [
+              [
+                "4",
+                "13"
+              ],
+              [
+                "4",
+                "13"
+              ]
+            ],
+            [
+              [
+                "10",
+                "15"
+              ],
+              [
+                "10",
+                "15"
+              ]
+            ],
+            [
+              [
+                "0",
+                "11"
+              ],
+              [
+                "0",
+                "11"
+              ]
+            ],
+            [
+              [
+                "21"
+              ],
+              [
+                "5",
+                "3",
+                "21",
+                "8"
+              ]
+            ],
+            [
+              [
+                "18"
+              ],
+              [
+                "1",
+                "13",
+                "6",
+                "18"
+              ]
+            ],
+            [
+              [
+                "20"
+              ],
+              [
+                "9",
+                "0",
+                "20",
+                "7"
+              ]
+            ],
+            [
+              [
+                "23"
+              ],
+              [
+                "3",
+                "7",
+                "5",
+                "23"
+              ]
+            ],
+            [
+              [
+                "19"
+              ],
+              [
+                "19",
+                "9",
+                "6",
+                "13"
+              ]
+            ],
+            [
+              [
+                "26"
+              ],
+              [
+                "0",
+                "1",
+                "26",
+                "8"
+              ]
+            ],
+            [
+              [
+                "22"
+              ],
+              [
+                "1",
+                "22",
+                "9",
+                "0"
+              ]
+            ],
+            [
+              [
+                "24"
+              ],
+              [
+                "7",
+                "24",
+                "5",
+                "6"
+              ]
+            ],
+            [
+              [
+                "25"
+              ],
+              [
+                "25",
+                "13",
+                "8",
+                "3"
+              ]
+            ],
+            [
+              [
+                "21"
+              ],
+              [
+                "21",
+                "7",
+                "0",
+                "13"
+              ]
+            ],
+            [
+              [
+                "18"
+              ],
+              [
+                "18",
+                "9",
+                "8",
+                "3"
+              ]
+            ],
+            [
+              [
+                "20"
+              ],
+              [
+                "1",
+                "5",
+                "20",
+                "6"
+              ]
+            ],
+            [
+              [
+                "23"
+              ],
+              [
+                "6",
+                "9",
+                "23",
+                "5"
+              ]
+            ],
+            [
+              [
+                "19"
+              ],
+              [
+                "0",
+                "19",
+                "7",
+                "8"
+              ]
+            ],
+            [
+              [
+                "26"
+              ],
+              [
+                "13",
+                "1",
+                "3",
+                "26"
+              ]
+            ],
+            [
+              [
+                "22"
+              ],
+              [
+                "8",
+                "13",
+                "22",
+                "7"
+              ]
+            ],
+            [
+              [
+                "24"
+              ],
+              [
+                "24",
+                "5",
+                "0",
+                "6"
+              ]
+            ],
+            [
+              [
+                "25"
+              ],
+              [
+                "9",
+                "1",
+                "25",
+                "3"
+              ]
+            ],
+            [
+              [
+                "21"
+              ],
+              [
+                "21",
+                "8",
+                "1",
+                "5"
+              ]
+            ],
+            [
+              [
+                "18"
+              ],
+              [
+                "7",
+                "18",
+                "3",
+                "6"
+              ]
+            ],
+            [
+              [
+                "20"
+              ],
+              [
+                "20",
+                "13",
+                "9",
+                "0"
+              ]
+            ],
+            [
+              [
+                "23"
+              ],
+              [
+                "23",
+                "8",
+                "0",
+                "3"
+              ]
+            ],
+            [
+              [
+                "19"
+              ],
+              [
+                "19",
+                "9",
+                "7",
+                "1"
+              ]
+            ],
+            [
+              [
+                "26"
+              ],
+              [
+                "6",
+                "13",
+                "26",
+                "5"
+              ]
+            ],
+            [
+              [
+                "22"
+              ],
+              [
+                "22",
+                "3",
+                "13",
+                "8"
+              ]
+            ],
+            [
+              [
+                "24"
+              ],
+              [
+                "7",
+                "5",
+                "9",
+                "24"
+              ]
+            ],
+            [
+              [
+                "25"
+              ],
+              [
+                "1",
+                "0",
+                "6",
+                "25"
+              ]
+            ]
+          ],
+          "test": [
+            {
+              "word": "10",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "10",
+              "group": "ctrl"
+            },
+            {
+              "word": "1",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "1",
+              "group": "foil"
+            },
+            {
+              "word": "12",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "12",
+              "group": "ctrl"
+            },
+            {
+              "word": "3",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "3",
+              "group": "foil"
+            },
+            {
+              "word": "14",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "14",
+              "group": "ctrl"
+            },
+            {
+              "word": "0",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "0",
+              "group": "foil"
+            },
+            {
+              "word": "15",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "15",
+              "group": "ctrl"
+            },
+            {
+              "word": "6",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "6",
+              "group": "foil"
+            },
+            {
+              "word": "17",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "17",
+              "group": "ctrl"
+            },
+            {
+              "word": "11",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "11",
+              "group": "ctrl"
+            },
+            {
+              "word": "8",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "8",
+              "group": "foil"
+            },
+            {
+              "word": "13",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "13",
+              "group": "foil"
+            },
+            {
+              "word": "9",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "9",
+              "group": "foil"
+            },
+            {
+              "word": "16",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "16",
+              "group": "ctrl"
+            },
+            {
+              "word": "7",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "7",
+              "group": "foil"
+            },
+            {
+              "word": "2",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "2",
+              "group": "ctrl"
+            },
+            {
+              "word": "5",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "5",
+              "group": "foil"
+            },
+            {
+              "word": "4",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "4",
+              "group": "ctrl"
+            }
+          ]
+        }
+      ]
+    },
+    "trials": [
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 4
+        },
+        "seed": 100000,
+        "power": 0.9566666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 4
+        },
+        "seed": 100001,
+        "power": 0.9666666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 4
+        },
+        "seed": 100002,
+        "power": 0.9533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 6
+        },
+        "seed": 100000,
+        "power": 0.93,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 6
+        },
+        "seed": 100001,
+        "power": 0.9566666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 6
+        },
+        "seed": 100002,
+        "power": 0.96,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 8
+        },
+        "seed": 100000,
+        "power": 0.9566666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 8
+        },
+        "seed": 100001,
+        "power": 0.98,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 6,
+          "reps": 8
+        },
+        "seed": 100002,
+        "power": 0.9666666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 4
+        },
+        "seed": 100000,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 4
+        },
+        "seed": 100001,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 4
+        },
+        "seed": 100002,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 6
+        },
+        "seed": 100000,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 6
+        },
+        "seed": 100001,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 6
+        },
+        "seed": 100002,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 8
+        },
+        "seed": 100000,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 8
+        },
+        "seed": 100001,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 9,
+          "reps": 8
+        },
+        "seed": 100002,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 4
+        },
+        "seed": 100000,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 4
+        },
+        "seed": 100001,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 4
+        },
+        "seed": 100002,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 6
+        },
+        "seed": 100000,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 6
+        },
+        "seed": 100001,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 6
+        },
+        "seed": 100002,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 8
+        },
+        "seed": 100000,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 8
+        },
+        "seed": 100001,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 12,
+          "reps": 8
+        },
+        "seed": 100002,
+        "power": 1.0,
+        "error": null
+      }
+    ],
+    "seconds": 1.437750999990385
+  },
+  {
+    "slot": 2,
+    "iter": 0,
+    "error": null,
+    "proposal": {
+      "name": "massed_vs_spaced_repetition_same_count",
+      "rationale": "This targets trial-order (temporal contiguity) sensitivity, which only xsl_14 has. xsl_14 carries a fading trace `prev` (r=2.1, rho=0.23) that multiplies the learning increment of a pair seen in the immediately preceding trial by about 1+r, roughly 3x. Pairs repeated in consecutive trials are therefore boosted. Pairs repeated after long gaps get almost no boost and also suffer more interference and decay from the intervening trials. inc_fazly updates a word's row only from the current trial's alignments and its own accumulated counts, so it has no recency or contiguity term, and the order of repetitions barely matters to it. Every word is heard exactly 6 times, in 2x2 trials with the same trial format. Each trial pairs one 'massed' word with one 'spaced' word, so both item types share trials, objects, partners and test, and the only difference is repetition timing. Massed words occur in bursts of consecutive trials. Within a burst the partner word and the distractor object change, so the correct object is still disambiguated within the burst. Spaced words are at least 5 trials apart. The contrast is a within-person item contrast, so ability differences cancel.",
+      "generator_source": "def make_design(knobs, rng):\n    n = int(knobs['n'])\n    blen = int(knobs['blen'])\n    ncand = int(knobs['ncand'])\n    reps = 6\n    nb = reps // blen\n    # massed sequence: bursts of blen consecutive trials, bursts of same word kept apart\n    best = None\n    for _ in range(300):\n        bursts = [w for w in range(n) for _ in range(nb)]\n        rng.shuffle(bursts)\n        ok = True\n        for i in range(len(bursts)):\n            for j in range(i + 1, min(i + 3, len(bursts))):\n                if bursts[i] == bursts[j]:\n                    ok = False\n        best = bursts\n        if ok:\n            break\n    mseq = [int(w) for w in best for _ in range(blen)]\n    # spaced sequence: rounds of permutations, with no immediate repeats across rounds\n    sseq = []\n    prev_last = set()\n    for k in range(reps):\n        perm = [int(x) for x in rng.permutation(n)]\n        if prev_last:\n            for i in range(4):\n                tries = 0\n                while perm[i] in prev_last and tries < 50:\n                    j = int(rng.integers(4, n))\n                    perm[i], perm[j] = perm[j], perm[i]\n                    tries += 1\n        sseq.extend(perm)\n        prev_last = set(perm[-4:])\n    T = min(len(mseq), len(sseq))\n    trials = []\n    for t in range(T):\n        ws = [mseq[t], n + sseq[t]]\n        os_ = list(ws)\n        if rng.random() < 0.5:\n            os_ = os_[::-1]\n        if rng.random() < 0.5:\n            ws = ws[::-1]\n        trials.append([ws, os_])\n    total = 2 * n\n    test = []\n    for w in rng.permutation(total):\n        w = int(w)\n        others = [o for o in range(total) if o != w]\n        k = min(ncand - 1, len(others))\n        d = rng.choice(others, size=k, replace=False)\n        cands = [int(x) for x in d] + [w]\n        cands = [int(x) for x in rng.permutation(cands)]\n        test.append({'word': w, 'candidates': cands, 'correct': w,\n                     'group': 'massed' if w < n else 'spaced'})\n    return {'arms': {'x': {'trials': trials, 'test': test}}}",
+      "knobs": {
+        "n": [
+          12,
+          18
+        ],
+        "blen": [
+          2,
+          3
+        ],
+        "ncand": [
+          4,
+          8,
+          16
+        ]
+      },
+      "contrast_source": "def contrast(acc, groups):\n    a = acc['x']\n    g = groups['x']\n    return a[g == 'massed'].mean() - a[g == 'spaced'].mean()",
+      "prediction": "xsl_14 predicts a clearly positive contrast (massed > spaced), roughly +0.08 to +0.15 in accuracy. Its contiguity trace boosts the learning increment for pairs repeated in the immediately preceding trial, and spaced pairs lose more to interference and decay between their repetitions. The effect should grow with burst length and with fewer candidates, where accuracy is further from floor. inc_fazly predicts a contrast near zero (within about \u00b10.02), because it has no sensitivity to the order or spacing of repetitions. Both item types receive the same 6 exposures with random partners, so its learning is the same for the two groups. A decision threshold at the midpoint (about +0.05) should separate the theories."
+    },
+    "accepted": false,
+    "summary": "massed_vs_spaced_repetition_same_count: 36/36 candidate designs valid; best setting blen=3, n=18, ncand=4 (seed 200002): x: 36 words x 36 objects, 108 trials (2.0x2.0 per trial), 36 test items (4-AFC).\n  final estimate: predicted contrast xsl_14 +0.0005, inc_fazly +0.0154 (simulated SD 0.0147 / 0.0151 at N=50 per arm); decide xsl_14 if the contrast is on its side of +0.0080; P(correct | xsl_14) 0.704, P(correct | inc_fazly) 0.697; power 0.697",
+    "search_power": 0.6533333333333333,
+    "power": {
+      "predicted": {
+        "xsl_14": 0.0005004778295593093,
+        "inc_fazly": 0.015435649572220322
+      },
+      "threshold": 0.007968063700889816,
+      "hit_rate": {
+        "xsl_14": 0.7035,
+        "inc_fazly": 0.697
+      },
+      "sim_sd": {
+        "xsl_14": 0.014657409704966944,
+        "inc_fazly": 0.015050289320872712
+      },
+      "power": 0.697,
+      "n_subj": 50,
+      "n_sims": 2000
+    },
+    "design": {
+      "name": "massed_vs_spaced_repetition_same_count",
+      "knobs": {
+        "blen": 3,
+        "n": 18,
+        "ncand": 4
+      },
+      "seed": 200002,
+      "arms": [
+        {
+          "name": "x",
+          "n_words": 36,
+          "n_objects": 36,
+          "n_trials": 108,
+          "trials": [
+            [
+              [
+                "34",
+                "4"
+              ],
+              [
+                "4",
+                "34"
+              ]
+            ],
+            [
+              [
+                "27",
+                "4"
+              ],
+              [
+                "27",
+                "4"
+              ]
+            ],
+            [
+              [
+                "4",
+                "32"
+              ],
+              [
+                "4",
+                "32"
+              ]
+            ],
+            [
+              [
+                "2",
+                "31"
+              ],
+              [
+                "31",
+                "2"
+              ]
+            ],
+            [
+              [
+                "2",
+                "30"
+              ],
+              [
+                "2",
+                "30"
+              ]
+            ],
+            [
+              [
+                "24",
+                "2"
+              ],
+              [
+                "2",
+                "24"
+              ]
+            ],
+            [
+              [
+                "3",
+                "25"
+              ],
+              [
+                "3",
+                "25"
+              ]
+            ],
+            [
+              [
+                "18",
+                "3"
+              ],
+              [
+                "18",
+                "3"
+              ]
+            ],
+            [
+              [
+                "3",
+                "28"
+              ],
+              [
+                "3",
+                "28"
+              ]
+            ],
+            [
+              [
+                "20",
+                "1"
+              ],
+              [
+                "1",
+                "20"
+              ]
+            ],
+            [
+              [
+                "21",
+                "1"
+              ],
+              [
+                "1",
+                "21"
+              ]
+            ],
+            [
+              [
+                "22",
+                "1"
+              ],
+              [
+                "22",
+                "1"
+              ]
+            ],
+            [
+              [
+                "35",
+                "5"
+              ],
+              [
+                "35",
+                "5"
+              ]
+            ],
+            [
+              [
+                "5",
+                "19"
+              ],
+              [
+                "5",
+                "19"
+              ]
+            ],
+            [
+              [
+                "33",
+                "5"
+              ],
+              [
+                "33",
+                "5"
+              ]
+            ],
+            [
+              [
+                "0",
+                "29"
+              ],
+              [
+                "29",
+                "0"
+              ]
+            ],
+            [
+              [
+                "23",
+                "0"
+              ],
+              [
+                "23",
+                "0"
+              ]
+            ],
+            [
+              [
+                "0",
+                "26"
+              ],
+              [
+                "26",
+                "0"
+              ]
+            ],
+            [
+              [
+                "8",
+                "31"
+              ],
+              [
+                "8",
+                "31"
+              ]
+            ],
+            [
+              [
+                "21",
+                "8"
+              ],
+              [
+                "21",
+                "8"
+              ]
+            ],
+            [
+              [
+                "28",
+                "8"
+              ],
+              [
+                "8",
+                "28"
+              ]
+            ],
+            [
+              [
+                "18",
+                "7"
+              ],
+              [
+                "7",
+                "18"
+              ]
+            ],
+            [
+              [
+                "7",
+                "23"
+              ],
+              [
+                "23",
+                "7"
+              ]
+            ],
+            [
+              [
+                "7",
+                "30"
+              ],
+              [
+                "7",
+                "30"
+              ]
+            ],
+            [
+              [
+                "19",
+                "5"
+              ],
+              [
+                "19",
+                "5"
+              ]
+            ],
+            [
+              [
+                "33",
+                "5"
+              ],
+              [
+                "5",
+                "33"
+              ]
+            ],
+            [
+              [
+                "35",
+                "5"
+              ],
+              [
+                "5",
+                "35"
+              ]
+            ],
+            [
+              [
+                "11",
+                "20"
+              ],
+              [
+                "20",
+                "11"
+              ]
+            ],
+            [
+              [
+                "11",
+                "24"
+              ],
+              [
+                "11",
+                "24"
+              ]
+            ],
+            [
+              [
+                "22",
+                "11"
+              ],
+              [
+                "11",
+                "22"
+              ]
+            ],
+            [
+              [
+                "9",
+                "34"
+              ],
+              [
+                "9",
+                "34"
+              ]
+            ],
+            [
+              [
+                "27",
+                "9"
+              ],
+              [
+                "27",
+                "9"
+              ]
+            ],
+            [
+              [
+                "25",
+                "9"
+              ],
+              [
+                "9",
+                "25"
+              ]
+            ],
+            [
+              [
+                "26",
+                "10"
+              ],
+              [
+                "26",
+                "10"
+              ]
+            ],
+            [
+              [
+                "10",
+                "32"
+              ],
+              [
+                "10",
+                "32"
+              ]
+            ],
+            [
+              [
+                "29",
+                "10"
+              ],
+              [
+                "10",
+                "29"
+              ]
+            ],
+            [
+              [
+                "13",
+                "21"
+              ],
+              [
+                "13",
+                "21"
+              ]
+            ],
+            [
+              [
+                "13",
+                "18"
+              ],
+              [
+                "18",
+                "13"
+              ]
+            ],
+            [
+              [
+                "13",
+                "35"
+              ],
+              [
+                "13",
+                "35"
+              ]
+            ],
+            [
+              [
+                "27",
+                "14"
+              ],
+              [
+                "14",
+                "27"
+              ]
+            ],
+            [
+              [
+                "14",
+                "31"
+              ],
+              [
+                "14",
+                "31"
+              ]
+            ],
+            [
+              [
+                "23",
+                "14"
+              ],
+              [
+                "14",
+                "23"
+              ]
+            ],
+            [
+              [
+                "7",
+                "22"
+              ],
+              [
+                "22",
+                "7"
+              ]
+            ],
+            [
+              [
+                "7",
+                "26"
+              ],
+              [
+                "26",
+                "7"
+              ]
+            ],
+            [
+              [
+                "25",
+                "7"
+              ],
+              [
+                "25",
+                "7"
+              ]
+            ],
+            [
+              [
+                "9",
+                "24"
+              ],
+              [
+                "24",
+                "9"
+              ]
+            ],
+            [
+              [
+                "30",
+                "9"
+              ],
+              [
+                "30",
+                "9"
+              ]
+            ],
+            [
+              [
+                "33",
+                "9"
+              ],
+              [
+                "33",
+                "9"
+              ]
+            ],
+            [
+              [
+                "32",
+                "13"
+              ],
+              [
+                "13",
+                "32"
+              ]
+            ],
+            [
+              [
+                "34",
+                "13"
+              ],
+              [
+                "13",
+                "34"
+              ]
+            ],
+            [
+              [
+                "20",
+                "13"
+              ],
+              [
+                "13",
+                "20"
+              ]
+            ],
+            [
+              [
+                "12",
+                "29"
+              ],
+              [
+                "12",
+                "29"
+              ]
+            ],
+            [
+              [
+                "19",
+                "12"
+              ],
+              [
+                "12",
+                "19"
+              ]
+            ],
+            [
+              [
+                "28",
+                "12"
+              ],
+              [
+                "12",
+                "28"
+              ]
+            ],
+            [
+              [
+                "26",
+                "16"
+              ],
+              [
+                "16",
+                "26"
+              ]
+            ],
+            [
+              [
+                "16",
+                "23"
+              ],
+              [
+                "16",
+                "23"
+              ]
+            ],
+            [
+              [
+                "33",
+                "16"
+              ],
+              [
+                "33",
+                "16"
+              ]
+            ],
+            [
+              [
+                "32",
+                "10"
+              ],
+              [
+                "10",
+                "32"
+              ]
+            ],
+            [
+              [
+                "18",
+                "10"
+              ],
+              [
+                "10",
+                "18"
+              ]
+            ],
+            [
+              [
+                "28",
+                "10"
+              ],
+              [
+                "10",
+                "28"
+              ]
+            ],
+            [
+              [
+                "14",
+                "27"
+              ],
+              [
+                "27",
+                "14"
+              ]
+            ],
+            [
+              [
+                "29",
+                "14"
+              ],
+              [
+                "14",
+                "29"
+              ]
+            ],
+            [
+              [
+                "22",
+                "14"
+              ],
+              [
+                "14",
+                "22"
+              ]
+            ],
+            [
+              [
+                "2",
+                "24"
+              ],
+              [
+                "2",
+                "24"
+              ]
+            ],
+            [
+              [
+                "2",
+                "21"
+              ],
+              [
+                "21",
+                "2"
+              ]
+            ],
+            [
+              [
+                "2",
+                "19"
+              ],
+              [
+                "19",
+                "2"
+              ]
+            ],
+            [
+              [
+                "30",
+                "6"
+              ],
+              [
+                "6",
+                "30"
+              ]
+            ],
+            [
+              [
+                "20",
+                "6"
+              ],
+              [
+                "20",
+                "6"
+              ]
+            ],
+            [
+              [
+                "6",
+                "31"
+              ],
+              [
+                "31",
+                "6"
+              ]
+            ],
+            [
+              [
+                "35",
+                "17"
+              ],
+              [
+                "17",
+                "35"
+              ]
+            ],
+            [
+              [
+                "17",
+                "25"
+              ],
+              [
+                "17",
+                "25"
+              ]
+            ],
+            [
+              [
+                "34",
+                "17"
+              ],
+              [
+                "17",
+                "34"
+              ]
+            ],
+            [
+              [
+                "16",
+                "23"
+              ],
+              [
+                "23",
+                "16"
+              ]
+            ],
+            [
+              [
+                "19",
+                "16"
+              ],
+              [
+                "19",
+                "16"
+              ]
+            ],
+            [
+              [
+                "29",
+                "16"
+              ],
+              [
+                "29",
+                "16"
+              ]
+            ],
+            [
+              [
+                "28",
+                "15"
+              ],
+              [
+                "15",
+                "28"
+              ]
+            ],
+            [
+              [
+                "27",
+                "15"
+              ],
+              [
+                "27",
+                "15"
+              ]
+            ],
+            [
+              [
+                "15",
+                "34"
+              ],
+              [
+                "15",
+                "34"
+              ]
+            ],
+            [
+              [
+                "20",
+                "1"
+              ],
+              [
+                "1",
+                "20"
+              ]
+            ],
+            [
+              [
+                "22",
+                "1"
+              ],
+              [
+                "22",
+                "1"
+              ]
+            ],
+            [
+              [
+                "35",
+                "1"
+              ],
+              [
+                "1",
+                "35"
+              ]
+            ],
+            [
+              [
+                "0",
+                "32"
+              ],
+              [
+                "0",
+                "32"
+              ]
+            ],
+            [
+              [
+                "0",
+                "24"
+              ],
+              [
+                "24",
+                "0"
+              ]
+            ],
+            [
+              [
+                "0",
+                "26"
+              ],
+              [
+                "0",
+                "26"
+              ]
+            ],
+            [
+              [
+                "11",
+                "33"
+              ],
+              [
+                "11",
+                "33"
+              ]
+            ],
+            [
+              [
+                "31",
+                "11"
+              ],
+              [
+                "31",
+                "11"
+              ]
+            ],
+            [
+              [
+                "11",
+                "18"
+              ],
+              [
+                "11",
+                "18"
+              ]
+            ],
+            [
+              [
+                "3",
+                "21"
+              ],
+              [
+                "3",
+                "21"
+              ]
+            ],
+            [
+              [
+                "30",
+                "3"
+              ],
+              [
+                "3",
+                "30"
+              ]
+            ],
+            [
+              [
+                "3",
+                "25"
+              ],
+              [
+                "25",
+                "3"
+              ]
+            ],
+            [
+              [
+                "6",
+                "22"
+              ],
+              [
+                "22",
+                "6"
+              ]
+            ],
+            [
+              [
+                "19",
+                "6"
+              ],
+              [
+                "6",
+                "19"
+              ]
+            ],
+            [
+              [
+                "35",
+                "6"
+              ],
+              [
+                "35",
+                "6"
+              ]
+            ],
+            [
+              [
+                "4",
+                "31"
+              ],
+              [
+                "31",
+                "4"
+              ]
+            ],
+            [
+              [
+                "29",
+                "4"
+              ],
+              [
+                "4",
+                "29"
+              ]
+            ],
+            [
+              [
+                "4",
+                "24"
+              ],
+              [
+                "24",
+                "4"
+              ]
+            ],
+            [
+              [
+                "17",
+                "30"
+              ],
+              [
+                "17",
+                "30"
+              ]
+            ],
+            [
+              [
+                "17",
+                "33"
+              ],
+              [
+                "17",
+                "33"
+              ]
+            ],
+            [
+              [
+                "17",
+                "32"
+              ],
+              [
+                "17",
+                "32"
+              ]
+            ],
+            [
+              [
+                "25",
+                "12"
+              ],
+              [
+                "12",
+                "25"
+              ]
+            ],
+            [
+              [
+                "23",
+                "12"
+              ],
+              [
+                "23",
+                "12"
+              ]
+            ],
+            [
+              [
+                "12",
+                "28"
+              ],
+              [
+                "28",
+                "12"
+              ]
+            ],
+            [
+              [
+                "8",
+                "21"
+              ],
+              [
+                "21",
+                "8"
+              ]
+            ],
+            [
+              [
+                "27",
+                "8"
+              ],
+              [
+                "27",
+                "8"
+              ]
+            ],
+            [
+              [
+                "8",
+                "18"
+              ],
+              [
+                "8",
+                "18"
+              ]
+            ],
+            [
+              [
+                "15",
+                "26"
+              ],
+              [
+                "26",
+                "15"
+              ]
+            ],
+            [
+              [
+                "34",
+                "15"
+              ],
+              [
+                "34",
+                "15"
+              ]
+            ],
+            [
+              [
+                "20",
+                "15"
+              ],
+              [
+                "15",
+                "20"
+              ]
+            ]
+          ],
+          "test": [
+            {
+              "word": "15",
+              "candidates": [
+                "6",
+                "29",
+                "15",
+                "32"
+              ],
+              "correct": "15",
+              "group": "massed"
+            },
+            {
+              "word": "27",
+              "candidates": [
+                "8",
+                "26",
+                "17",
+                "27"
+              ],
+              "correct": "27",
+              "group": "spaced"
+            },
+            {
+              "word": "8",
+              "candidates": [
+                "11",
+                "8",
+                "5",
+                "0"
+              ],
+              "correct": "8",
+              "group": "massed"
+            },
+            {
+              "word": "11",
+              "candidates": [
+                "11",
+                "32",
+                "12",
+                "8"
+              ],
+              "correct": "11",
+              "group": "massed"
+            },
+            {
+              "word": "18",
+              "candidates": [
+                "7",
+                "8",
+                "18",
+                "3"
+              ],
+              "correct": "18",
+              "group": "spaced"
+            },
+            {
+              "word": "14",
+              "candidates": [
+                "9",
+                "24",
+                "5",
+                "14"
+              ],
+              "correct": "14",
+              "group": "massed"
+            },
+            {
+              "word": "31",
+              "candidates": [
+                "31",
+                "12",
+                "8",
+                "29"
+              ],
+              "correct": "31",
+              "group": "spaced"
+            },
+            {
+              "word": "32",
+              "candidates": [
+                "32",
+                "27",
+                "6",
+                "35"
+              ],
+              "correct": "32",
+              "group": "spaced"
+            },
+            {
+              "word": "2",
+              "candidates": [
+                "19",
+                "10",
+                "2",
+                "25"
+              ],
+              "correct": "2",
+              "group": "massed"
+            },
+            {
+              "word": "6",
+              "candidates": [
+                "19",
+                "26",
+                "11",
+                "6"
+              ],
+              "correct": "6",
+              "group": "massed"
+            },
+            {
+              "word": "34",
+              "candidates": [
+                "25",
+                "34",
+                "31",
+                "27"
+              ],
+              "correct": "34",
+              "group": "spaced"
+            },
+            {
+              "word": "1",
+              "candidates": [
+                "33",
+                "14",
+                "1",
+                "17"
+              ],
+              "correct": "1",
+              "group": "massed"
+            },
+            {
+              "word": "30",
+              "candidates": [
+                "26",
+                "30",
+                "35",
+                "31"
+              ],
+              "correct": "30",
+              "group": "spaced"
+            },
+            {
+              "word": "19",
+              "candidates": [
+                "32",
+                "1",
+                "22",
+                "19"
+              ],
+              "correct": "19",
+              "group": "spaced"
+            },
+            {
+              "word": "24",
+              "candidates": [
+                "34",
+                "24",
+                "7",
+                "30"
+              ],
+              "correct": "24",
+              "group": "spaced"
+            },
+            {
+              "word": "29",
+              "candidates": [
+                "17",
+                "7",
+                "29",
+                "11"
+              ],
+              "correct": "29",
+              "group": "spaced"
+            },
+            {
+              "word": "16",
+              "candidates": [
+                "19",
+                "32",
+                "16",
+                "14"
+              ],
+              "correct": "16",
+              "group": "massed"
+            },
+            {
+              "word": "12",
+              "candidates": [
+                "12",
+                "30",
+                "15",
+                "11"
+              ],
+              "correct": "12",
+              "group": "massed"
+            },
+            {
+              "word": "25",
+              "candidates": [
+                "30",
+                "25",
+                "3",
+                "2"
+              ],
+              "correct": "25",
+              "group": "spaced"
+            },
+            {
+              "word": "13",
+              "candidates": [
+                "30",
+                "13",
+                "10",
+                "26"
+              ],
+              "correct": "13",
+              "group": "massed"
+            },
+            {
+              "word": "22",
+              "candidates": [
+                "22",
+                "6",
+                "30",
+                "25"
+              ],
+              "correct": "22",
+              "group": "spaced"
+            },
+            {
+              "word": "5",
+              "candidates": [
+                "5",
+                "0",
+                "4",
+                "21"
+              ],
+              "correct": "5",
+              "group": "massed"
+            },
+            {
+              "word": "0",
+              "candidates": [
+                "12",
+                "22",
+                "35",
+                "0"
+              ],
+              "correct": "0",
+              "group": "massed"
+            },
+            {
+              "word": "23",
+              "candidates": [
+                "8",
+                "12",
+                "27",
+                "23"
+              ],
+              "correct": "23",
+              "group": "spaced"
+            },
+            {
+              "word": "7",
+              "candidates": [
+                "11",
+                "25",
+                "1",
+                "7"
+              ],
+              "correct": "7",
+              "group": "massed"
+            },
+            {
+              "word": "4",
+              "candidates": [
+                "4",
+                "14",
+                "19",
+                "29"
+              ],
+              "correct": "4",
+              "group": "massed"
+            },
+            {
+              "word": "20",
+              "candidates": [
+                "7",
+                "3",
+                "20",
+                "6"
+              ],
+              "correct": "20",
+              "group": "spaced"
+            },
+            {
+              "word": "3",
+              "candidates": [
+                "3",
+                "20",
+                "18",
+                "24"
+              ],
+              "correct": "3",
+              "group": "massed"
+            },
+            {
+              "word": "26",
+              "candidates": [
+                "0",
+                "26",
+                "15",
+                "7"
+              ],
+              "correct": "26",
+              "group": "spaced"
+            },
+            {
+              "word": "9",
+              "candidates": [
+                "9",
+                "2",
+                "14",
+                "10"
+              ],
+              "correct": "9",
+              "group": "massed"
+            },
+            {
+              "word": "17",
+              "candidates": [
+                "24",
+                "17",
+                "35",
+                "22"
+              ],
+              "correct": "17",
+              "group": "massed"
+            },
+            {
+              "word": "21",
+              "candidates": [
+                "20",
+                "0",
+                "21",
+                "25"
+              ],
+              "correct": "21",
+              "group": "spaced"
+            },
+            {
+              "word": "10",
+              "candidates": [
+                "7",
+                "30",
+                "10",
+                "24"
+              ],
+              "correct": "10",
+              "group": "massed"
+            },
+            {
+              "word": "28",
+              "candidates": [
+                "19",
+                "33",
+                "10",
+                "28"
+              ],
+              "correct": "28",
+              "group": "spaced"
+            },
+            {
+              "word": "33",
+              "candidates": [
+                "28",
+                "0",
+                "33",
+                "2"
+              ],
+              "correct": "33",
+              "group": "spaced"
+            },
+            {
+              "word": "35",
+              "candidates": [
+                "13",
+                "35",
+                "32",
+                "24"
+              ],
+              "correct": "35",
+              "group": "spaced"
+            }
+          ]
+        }
+      ]
+    },
+    "trials": [
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 4
+        },
+        "seed": 200000,
+        "power": 0.53,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 4
+        },
+        "seed": 200001,
+        "power": 0.5966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 4
+        },
+        "seed": 200002,
+        "power": 0.46,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 8
+        },
+        "seed": 200000,
+        "power": 0.6366666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 8
+        },
+        "seed": 200001,
+        "power": 0.54,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 8
+        },
+        "seed": 200002,
+        "power": 0.5066666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 16
+        },
+        "seed": 200000,
+        "power": 0.5166666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 16
+        },
+        "seed": 200001,
+        "power": 0.5433333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 12,
+          "ncand": 16
+        },
+        "seed": 200002,
+        "power": 0.5366666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 4
+        },
+        "seed": 200000,
+        "power": 0.5366666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 4
+        },
+        "seed": 200001,
+        "power": 0.5033333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 4
+        },
+        "seed": 200002,
+        "power": 0.5666666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 8
+        },
+        "seed": 200000,
+        "power": 0.56,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 8
+        },
+        "seed": 200001,
+        "power": 0.4666666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 8
+        },
+        "seed": 200002,
+        "power": 0.5833333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 16
+        },
+        "seed": 200000,
+        "power": 0.4633333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 16
+        },
+        "seed": 200001,
+        "power": 0.5433333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 2,
+          "n": 18,
+          "ncand": 16
+        },
+        "seed": 200002,
+        "power": 0.5466666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 4
+        },
+        "seed": 200000,
+        "power": 0.5566666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 4
+        },
+        "seed": 200001,
+        "power": 0.6433333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 4
+        },
+        "seed": 200002,
+        "power": 0.6033333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 8
+        },
+        "seed": 200000,
+        "power": 0.57,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 8
+        },
+        "seed": 200001,
+        "power": 0.4866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 8
+        },
+        "seed": 200002,
+        "power": 0.5966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 16
+        },
+        "seed": 200000,
+        "power": 0.51,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 16
+        },
+        "seed": 200001,
+        "power": 0.49666666666666665,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 12,
+          "ncand": 16
+        },
+        "seed": 200002,
+        "power": 0.5,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 4
+        },
+        "seed": 200000,
+        "power": 0.5,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 4
+        },
+        "seed": 200001,
+        "power": 0.6333333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 4
+        },
+        "seed": 200002,
+        "power": 0.6533333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 8
+        },
+        "seed": 200000,
+        "power": 0.5266666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 8
+        },
+        "seed": 200001,
+        "power": 0.56,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 8
+        },
+        "seed": 200002,
+        "power": 0.5166666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 16
+        },
+        "seed": 200000,
+        "power": 0.51,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 16
+        },
+        "seed": 200001,
+        "power": 0.5866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "blen": 3,
+          "n": 18,
+          "ncand": 16
+        },
+        "seed": 200002,
+        "power": 0.5933333333333334,
+        "error": null
+      }
+    ],
+    "seconds": 2.3227809999953024
+  },
+  {
+    "slot": 2,
+    "iter": 1,
+    "error": null,
+    "proposal": {
+      "name": "synonym_second_label_column_competition",
+      "rationale": "The design targets the test-time column competition and retroactive interference in xsl_14, which inc_fazly lacks. In xsl_14 the final score is M * share^b, where share is the pair's fraction of the object's total association mass across all words. Every appearance of an object also multiplies its whole column by (1-deff), so old associations erode. inc_fazly instead reads each word's own row of probabilities, normalised within the word. It only learns competitively among words present in the same trial.\n\nPhase 1 teaches A words to 'old' objects with unambiguous 1x1 trials, so xsl_14 builds a very strong association to each old object. Phase 2 trains two item types in the same ambiguous trials, with equal repetitions and positions. S words are second labels (synonyms) for old objects, so the object's column is dominated by the A word. U words are labels for brand-new objects. Because the A words never appear in phase 2, there is no in-trial competition for either type, so inc_fazly should treat S and U identically. xsl_14 should score S items lower because the old objects' column mass shrinks the S words' share. The contrast is a within-arm, within-person item difference (U minus S), so ability cancels. The only difference between the item types is whether the target object already carries another word's association.",
+      "generator_source": "def make_design(knobs, rng):\n    n = int(knobs['n'])\n    a_reps = int(knobs['a_reps'])\n    k = int(knobs['k'])\n    p_reps = int(knobs['p_reps'])\n    a_trials = n * a_reps\n    cap = ((108 - a_trials) * k) // (2 * n)\n    p_reps = max(2, min(p_reps, cap))\n    # words: A 0..n-1, S n..2n-1, U 2n..3n-1\n    # objects: old 0..n-1, new n..2n-1\n    perm = rng.permutation(n)\n    obj_of = {}\n    for i in range(n):\n        obj_of[i] = i\n        obj_of[n + i] = int(perm[i])\n        obj_of[2 * n + i] = n + i\n    trials = []\n    for _ in range(a_reps):\n        order = rng.permutation(n)\n        for w in order:\n            trials.append([[int(w)], [obj_of[int(w)]]])\n    p2 = np.arange(n, 3 * n)\n    for _ in range(p_reps):\n        order = rng.permutation(p2)\n        for j in range(0, len(order), k):\n            ch = [int(x) for x in order[j:j + k]]\n            if len(ch) < k:\n                continue\n            trials.append([ch, [obj_of[w] for w in ch]])\n    test = []\n    cands = list(range(2 * n))\n    for w in range(n, 3 * n):\n        test.append({\"word\": w, \"candidates\": cands, \"correct\": obj_of[w],\n                     \"group\": \"S\" if w < 2 * n else \"U\"})\n    idx = rng.permutation(len(test))\n    test = [test[int(i)] for i in idx]\n    return {\"arms\": {\"x\": {\"trials\": trials, \"test\": test}}}\n",
+      "knobs": {
+        "n": [
+          9,
+          12
+        ],
+        "a_reps": [
+          2,
+          3,
+          4
+        ],
+        "k": [
+          2,
+          3
+        ],
+        "p_reps": [
+          4,
+          6,
+          8
+        ]
+      },
+      "contrast_source": "def contrast(acc, groups):\n    g = groups['x']\n    a = acc['x']\n    return a[g == 'U'].mean() - a[g == 'S'].mean()",
+      "prediction": "xsl_14 predicts a clearly positive contrast, roughly +0.08 to +0.20 (U better than S). Old objects carry large association mass from the A words, so the S words' share of those columns is small. Phase-2 appearances of those objects also decay the old column. The S words therefore score low at test, while U words on fresh columns keep a share near 1. inc_fazly predicts a contrast near 0 (within about \u00b10.02). Its word rows are normalised per word, A words are absent in phase 2, and S and U words receive identical alignments and repetitions, so the old object's history does not affect S words."
+    },
+    "accepted": true,
+    "summary": "synonym_second_label_column_competition: 108/108 candidate designs valid; best setting a_reps=2, k=3, n=9, p_reps=4 (seed 201001): x: 27 words x 18 objects, 42 trials (2.1x2.1 per trial), 18 test items (18-AFC).\n  final estimate: predicted contrast xsl_14 +0.1862, inc_fazly -0.0068 (simulated SD 0.0299 / 0.0278 at N=50 per arm); decide xsl_14 if the contrast is on its side of +0.0897; P(correct | xsl_14) 0.999, P(correct | inc_fazly) 1.000; power 0.999",
+    "search_power": 1.0,
+    "power": {
+      "predicted": {
+        "xsl_14": 0.18617775043333343,
+        "inc_fazly": -0.006830603980418903
+      },
+      "threshold": 0.08967357322645726,
+      "hit_rate": {
+        "xsl_14": 0.999,
+        "inc_fazly": 0.9995
+      },
+      "sim_sd": {
+        "xsl_14": 0.029941375146759916,
+        "inc_fazly": 0.02784332497527931
+      },
+      "power": 0.999,
+      "n_subj": 50,
+      "n_sims": 2000
+    },
+    "design": {
+      "name": "synonym_second_label_column_competition",
+      "knobs": {
+        "a_reps": 2,
+        "k": 3,
+        "n": 9,
+        "p_reps": 4
+      },
+      "seed": 201001,
+      "arms": [
+        {
+          "name": "x",
+          "n_words": 27,
+          "n_objects": 18,
+          "n_trials": 42,
+          "trials": [
+            [
+              [
+                "4"
+              ],
+              [
+                "4"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3"
+              ]
+            ],
+            [
+              [
+                "19",
+                "23",
+                "12"
+              ],
+              [
+                "10",
+                "14",
+                "1"
+              ]
+            ],
+            [
+              [
+                "13",
+                "25",
+                "18"
+              ],
+              [
+                "6",
+                "16",
+                "9"
+              ]
+            ],
+            [
+              [
+                "10",
+                "11",
+                "15"
+              ],
+              [
+                "0",
+                "3",
+                "7"
+              ]
+            ],
+            [
+              [
+                "21",
+                "26",
+                "20"
+              ],
+              [
+                "12",
+                "17",
+                "11"
+              ]
+            ],
+            [
+              [
+                "16",
+                "9",
+                "22"
+              ],
+              [
+                "4",
+                "8",
+                "13"
+              ]
+            ],
+            [
+              [
+                "17",
+                "24",
+                "14"
+              ],
+              [
+                "2",
+                "15",
+                "5"
+              ]
+            ],
+            [
+              [
+                "15",
+                "24",
+                "16"
+              ],
+              [
+                "7",
+                "15",
+                "4"
+              ]
+            ],
+            [
+              [
+                "25",
+                "18",
+                "22"
+              ],
+              [
+                "16",
+                "9",
+                "13"
+              ]
+            ],
+            [
+              [
+                "9",
+                "11",
+                "12"
+              ],
+              [
+                "8",
+                "3",
+                "1"
+              ]
+            ],
+            [
+              [
+                "26",
+                "23",
+                "14"
+              ],
+              [
+                "17",
+                "14",
+                "5"
+              ]
+            ],
+            [
+              [
+                "17",
+                "10",
+                "20"
+              ],
+              [
+                "2",
+                "0",
+                "11"
+              ]
+            ],
+            [
+              [
+                "13",
+                "21",
+                "19"
+              ],
+              [
+                "6",
+                "12",
+                "10"
+              ]
+            ],
+            [
+              [
+                "24",
+                "9",
+                "10"
+              ],
+              [
+                "15",
+                "8",
+                "0"
+              ]
+            ],
+            [
+              [
+                "23",
+                "20",
+                "21"
+              ],
+              [
+                "14",
+                "11",
+                "12"
+              ]
+            ],
+            [
+              [
+                "18",
+                "26",
+                "17"
+              ],
+              [
+                "9",
+                "17",
+                "2"
+              ]
+            ],
+            [
+              [
+                "19",
+                "12",
+                "11"
+              ],
+              [
+                "10",
+                "1",
+                "3"
+              ]
+            ],
+            [
+              [
+                "15",
+                "25",
+                "22"
+              ],
+              [
+                "7",
+                "16",
+                "13"
+              ]
+            ],
+            [
+              [
+                "16",
+                "13",
+                "14"
+              ],
+              [
+                "4",
+                "6",
+                "5"
+              ]
+            ],
+            [
+              [
+                "18",
+                "16",
+                "12"
+              ],
+              [
+                "9",
+                "4",
+                "1"
+              ]
+            ],
+            [
+              [
+                "17",
+                "24",
+                "20"
+              ],
+              [
+                "2",
+                "15",
+                "11"
+              ]
+            ],
+            [
+              [
+                "23",
+                "13",
+                "22"
+              ],
+              [
+                "14",
+                "6",
+                "13"
+              ]
+            ],
+            [
+              [
+                "15",
+                "26",
+                "19"
+              ],
+              [
+                "7",
+                "17",
+                "10"
+              ]
+            ],
+            [
+              [
+                "21",
+                "9",
+                "11"
+              ],
+              [
+                "12",
+                "8",
+                "3"
+              ]
+            ],
+            [
+              [
+                "25",
+                "14",
+                "10"
+              ],
+              [
+                "16",
+                "5",
+                "0"
+              ]
+            ]
+          ],
+          "test": [
+            {
+              "word": "22",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "13",
+              "group": "U"
+            },
+            {
+              "word": "20",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "11",
+              "group": "U"
+            },
+            {
+              "word": "18",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "9",
+              "group": "U"
+            },
+            {
+              "word": "25",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "16",
+              "group": "U"
+            },
+            {
+              "word": "23",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "14",
+              "group": "U"
+            },
+            {
+              "word": "15",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "7",
+              "group": "S"
+            },
+            {
+              "word": "17",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "2",
+              "group": "S"
+            },
+            {
+              "word": "13",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "6",
+              "group": "S"
+            },
+            {
+              "word": "19",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "10",
+              "group": "U"
+            },
+            {
+              "word": "11",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "3",
+              "group": "S"
+            },
+            {
+              "word": "24",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "15",
+              "group": "U"
+            },
+            {
+              "word": "21",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "12",
+              "group": "U"
+            },
+            {
+              "word": "26",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "17",
+              "group": "U"
+            },
+            {
+              "word": "9",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "8",
+              "group": "S"
+            },
+            {
+              "word": "16",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "4",
+              "group": "S"
+            },
+            {
+              "word": "12",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "1",
+              "group": "S"
+            },
+            {
+              "word": "10",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "0",
+              "group": "S"
+            },
+            {
+              "word": "14",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "5",
+              "group": "S"
+            }
+          ]
+        }
+      ]
+    },
+    "trials": [
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 0.9366666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 0.92,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 0.9533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.9233333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.92,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9266666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.9066666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.8833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.9266666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 0.9666666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 0.9733333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 0.95,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.9333333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.9466666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.94,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.94,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.95,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.9533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.9866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.9366666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9766666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.86,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.8466666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.8466666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.9733333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.91,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.8533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 2,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.87,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 0.9433333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 0.93,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 0.97,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.93,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.9233333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9366666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.9033333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.91,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.91,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 0.9866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 0.9633333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 0.9566666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.92,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.9533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9633333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.92,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.9533333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.9633333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.9866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.9733333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9766666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.8866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.8633333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.8566666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.98,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.9833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.8966666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.91,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 3,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.7833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 0.8933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 0.94,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 0.98,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.91,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.9033333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9233333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.9033333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.9033333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.8966666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 0.9333333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 0.9733333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 0.98,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.9333333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.96,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9466666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.9333333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.96,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 2,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.9466666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.9633333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9766666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.8666666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.84,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 9,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.8133333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201000,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201001,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 4
+        },
+        "seed": 201002,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201000,
+        "power": 0.9766666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201001,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 6
+        },
+        "seed": 201002,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201000,
+        "power": 0.8833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201001,
+        "power": 0.9166666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "a_reps": 4,
+          "k": 3,
+          "n": 12,
+          "p_reps": 8
+        },
+        "seed": 201002,
+        "power": 0.9833333333333333,
+        "error": null
+      }
+    ],
+    "seconds": 5.4266544170095585
+  }
+]

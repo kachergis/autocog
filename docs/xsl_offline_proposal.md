@@ -284,5 +284,16 @@ results/xsl/
    the mode-B report.
 3. **Prospective stream.** Design generator + validator, incumbent service,
    divergence-at-matched-fit acceptance, the queue.
+
+   **Status: built and run (2026-10-19)** for `xsl_14` vs fazly
+   (`main_xsl_design.py`, `src/xsl/design.py`). Instead of
+   divergence-at-matched-fit, acceptance is the power of a pre-stated
+   contrast at N = 50 per arm. Experiments are simulated from each theory's
+   random-ability fit, with parameter uncertainty from the CV folds, and
+   decided by a pre-registered midpoint rule. The designer writes a design
+   generator with knobs, and a local search picks the knob setting. Three of
+   four proposals were accepted and queued with all 19 theories' frozen
+   predictions. A second run, for kachergis vs fazly, accepted 3 of 3.
+   Results are in the mode-B report.
 4. **Evaluation.** Holdout vs the bakeoff winner; ablations (no stream 2; A vs
    B); recovery checks with an incumbent as ground truth. Then mode A.

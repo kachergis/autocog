@@ -2,10 +2,10 @@
 
 Status: **draft, 2026-10-19.** It covers everything done so far: Phase 0, the
 data bridge; Phase 1, theory generation in mode B (the full corpus visible);
-re-evaluation under three objectives; and Phase 2, a debate between the best
-generated theory and the best incumbent. No new data were collected. Phase 3
-(prospective designs), the sealed holdouts and mode A (sequential unsealing)
-have not been started.
+re-evaluation under three objectives; Phase 2, a debate between the best
+generated theory and the best incumbent; and a first Phase 3 run of
+prospective designs that discriminate them. No new data were collected. The
+sealed holdouts and mode A (sequential unsealing) have not been used.
 Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 `xsl-offline-phase0`.
 
@@ -55,6 +55,18 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
   required closing the lost query, none of 9 candidates passed. The
   candidates that moved the query most cost 31–34 held-out NLL. Within this
   family, fitting the repetition effect costs fit elsewhere.
+- **Phase 3 queued three new experiments** for `xsl_14` vs fazly, each at
+  power ≥ .96 with 50 people per arm. The strongest is a retroactive
+  interference test. 18 word–object pairs are learned; then half of the
+  objects reappear with new words. Every theory that updates only the words
+  heard (fazly, kachergis, uncfam) predicts no cost to the old pairs. Every
+  interference theory (`xsl_03`–`14`, tilles) predicts a cost of .13–.33. A
+  synonym test splits fazly from xsl_14 and kachergis. A load test is largely
+  answered by the existing corpus already. Three more designs, for
+  kachergis vs fazly (power ≥ .98), all use one word per trial: fazly's
+  competition acts only between the words on a trial, so it reduces to
+  counting there. One of them, a trial-order design, also splits kachergis
+  from the generated theories, which predict the opposite sign.
 - **Process lessons.**
   - Single-start fits left larger theories up to 421 NLL from their optimum,
     so fitting needs restarts and warm starts.
@@ -64,8 +76,8 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
     held-out data, so such constants are now refitted.
   - Fitting can switch off a mechanism the debate asked for, so a debate
     revision gate has to test the query, not just the NLL.
-- **Cost:** about $7.2 of LLM calls in logged tokens across 12 generator
-  rounds and 6 debate rounds. All re-evaluation was local computation.
+- **Cost:** about $8.1 of LLM calls in logged tokens across 12 generator
+  rounds, 6 debate rounds and 7 design proposals. All re-evaluation was local computation.
 
 ## Steps taken
 
@@ -82,6 +94,8 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 | 10-17 | Random ability made the default objective. Rounds 10–12 with the full incumbent field on the leaderboard. A labelling bug was found and fixed. **Leakage through pinned constants** was found: `xsl_10`–`12` were refit honestly, and the loop now refits pinned copies. | `e5ab5867`–`e015aee6` |
 | 10-17/18 | **Phase 2, corpus-query debate** (`xsl_12` vs fazly), rounds 1–3: `xsl_13` and `xsl_14` accepted. | `40360e68`, `f91110d4` |
 | 10-18/19 | **Query gate** (`--gate nll_and_query`) and gated rounds 4–6: nothing accepted. | `0b35b8a6`, `db8214f3` |
+| 10-19 | **Phase 3, prospective designs** (`xsl_14` vs fazly): an LLM-written design generator, a power simulation at N = 50 and a frozen queue. 3 designs accepted from 4 proposals. | `767303cb` |
+| 10-19 | Phase 3 for kachergis vs fazly: 3 designs accepted from 3 proposals. | |
 
 | run | what | directory |
 |---|---|---|
@@ -94,6 +108,8 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 | honest re-evaluation | `xsl_10`–`12` with their hard-coded parameters freed | [`results/xsl/mode_b_subject_unpinned/`](../results/xsl/mode_b_subject_unpinned/) |
 | debate | Phase 2, rounds 1–3 (`xsl_13`, `xsl_14`) | [`results/xsl/debate_xsl_12_vs_inc_fazly/`](../results/xsl/debate_xsl_12_vs_inc_fazly/) |
 | gated debate | rounds 4–6 under the query gate; holds the current full leaderboard | [`results/xsl/debate_xsl_12_vs_inc_fazly_gated/`](../results/xsl/debate_xsl_12_vs_inc_fazly_gated/) |
+| designs | Phase 3: queue of accepted designs with frozen predictions, `xsl_14` vs fazly | [`results/xsl/designs_xsl_14_vs_inc_fazly/`](../results/xsl/designs_xsl_14_vs_inc_fazly/) |
+| designs 2 | the same for kachergis vs fazly | [`results/xsl/designs_kachergis_vs_inc_fazly/`](../results/xsl/designs_kachergis_vs_inc_fazly/) |
 
 ## Setup
 
@@ -345,6 +361,129 @@ over early levels, so they saw only `xsl_14`'s problem.
   held-out NLL. A debate between theories closer in overall fit would test
   the arbiter more.
 
+### Phase 3: prospective designs (`xsl_14` vs fazly)
+
+The aim is a new experiment on which the two theories make clearly
+different, pre-registrable predictions
+([`main_xsl_design.py`](../main_xsl_design.py), [`src/xsl/design.py`](../src/xsl/design.py)).
+
+1. **Proposal.** A designer (Sonnet 5.5) sees both theories, the corpus
+   comparison and the debate ledger. It writes a design generator,
+   `make_design(knobs, rng)`, with a few knobs, plus a pre-stated
+   **contrast**: a statistic of per-item test accuracy.
+2. **Validation.** Each design is checked against the runnable design space.
+   Per arm: ≤ 36 words and objects, ≤ 108 trials, every word heard ≥ 2
+   times, and ≤ 36-AFC tests with an explicit correct object that co-occurred
+   with the word. There are at most 4 between-subject arms.
+3. **Power search.** At every knob setting (3 random orders each),
+   experiments with **50 people per arm** are simulated from each theory's
+   random-ability fit. Each simulated experiment draws its parameters from
+   the full fit or one of the five CV fold fits. The decision rule is
+   pre-registered: the observed contrast favours whichever theory's
+   prediction is on its side of the midpoint. Power is the smaller of the
+   two rates of picking the theory that generated the data. The best setting
+   is re-estimated with 2,000 fresh simulations per theory, so power is not
+   inflated by selection.
+4. **Acceptance.** At power ≥ .8 the design is frozen into the queue, hashed
+   and timestamped, with every leaderboard theory's per-item predictions.
+   Otherwise the designer sees the result and revises.
+
+Four proposals produced three accepted designs. The rejected one was a
+massed-vs-spaced repetition contrast: the two theories' predictions differed
+by only .015, for power .70. Each search took 1–6 s.
+
+| design | structure | contrast | `xsl_14` | fazly | power |
+|---|---|---|---|---|---|
+| **retroactive object reappearance** | 1 arm, 27 words × 27 objects, 63 trials. Block 1: 18 pairs in 2×2 trials, 4 times each. Block 2: 9 of the 18 old objects reappear as foils, 1 new word × 4 objects per trial, 27 trials. Test: the 18 old words, 18-AFC | control − foil-object pairs | +.156 | .000 | .993 |
+| **synonym vs new label** | 1 arm, 27 words × 18 objects (w > o), 42 trials. Phase 1: 9 words learned 1×1. Phase 2 in 3×3 trials: 9 second labels for those objects and 9 labels for new objects, 4 times each. Test: the 18 phase-2 words, 18-AFC | new-object labels − second labels | +.186 | −.007 | .999 |
+| **sparse vs dense, matched exposure** | 2 arms × 18 words × 18 objects, 6 exposures per word: 1 word × 2 objects (108 trials) vs 4×4 (27 trials) | sparse − dense mean accuracy | +.247 | +.043 | .964 |
+
+**What every theory predicts.** The queue freezes all 19 leaderboard
+theories' predictions, which shows what each design actually discriminates:
+
+| contrast | predicts ≈ 0 | predicts a clear effect |
+|---|---|---|
+| retroactive reappearance | fazly, kachergis, uncfam_gamma, uncfam_attention, baseline (all .000); Bayesian_decay .02 | every interference theory: `xsl_03`–`14` +.13 to +.26, tilles +.33 |
+| synonym vs new label | fazly −.01, `xsl_03`–`06` and `xsl_08` (≤ .03), Bayesian_decay, baseline; tilles +.06 | `xsl_09`–`14` +.11 to +.19, `xsl_07` +.15, kachergis and uncfam +.22 to +.28 |
+| sparse vs dense | fazly .04, Bayesian_decay .06, baseline .08 | generated theories +.13 to +.28, kachergis and uncfam +.33 to +.34; tilles **−.20** |
+
+- **Retroactive reappearance is the most valuable design.** It splits the
+  field along one mechanism: whether learning a new word can erode an old
+  word's link to the same object. Theories that update only the words heard
+  on a trial predict exactly no effect, whatever their parameters. Every
+  interference theory predicts a cost. The corpus has no condition that
+  isolates this.
+- **Synonym vs new label** is a mutual-exclusivity test with late-introduced
+  second labels. It separates fazly (and the `xsl_04`–`06` subfamily) from
+  `xsl_14` and the uncfam models. Published work on late-introduced and
+  one-to-many mappings (including the sealed koehne2013 holdout) may already
+  bear on it, so check before running it.
+- **Sparse vs dense is largely answered already.** Its dense arm is close to
+  corpus condition 223 (4×4, 27 trials, human .31; `xsl_14` predicts .34,
+  fazly .43). Its sparse arm sits next to 222 (1 word × 3 objects, human
+  .39). The search optimises discriminability, not novelty relative to the
+  corpus, so a redundancy check is the obvious next filter.
+
+#### Kachergis vs fazly
+
+The same pipeline, run on the two best incumbents by held-out NLL. The
+designer saw no debate ledger, since there was no debate for this pair.
+All three proposals were accepted on their first attempt.
+
+| design | structure | contrast | kachergis | fazly | power |
+|---|---|---|---|---|---|
+| **mutual exclusivity vs co-occurrence** | 1 arm, 18 words × 30 objects, 66 trials. Phase 1: 6 words learned 1×1, 3 times each. Phase 2: 1 word × 3 objects per trial, 4 times each. 6 "ME" words always appear with their novel target and 2 known objects; 6 control words with 3 novel objects. Test: 3-AFC over each word's trio | ME − control | +.476 | .000 | 1.000 |
+| **hub vs private referent** | 1 arm, 12 words × 24 objects, 60 trials of 1 word × 3 objects, 5 per word; each word always appears with the same trio. Half the words' referents also appear in other words' trials (hubs); half are private, with hub companions. Test: 24-AFC | hub referent − private referent | −.143 | .000 | .978 |
+| **trial order at matched counts** | 1 arm, 12 words × 24 objects, 72 trials, 1 word per trial. Each word has a referent R (on 5 of its 6 trials: 3 alone, 2 ambiguous) and a decoy D (on 3: 1 alone, 2 ambiguous), with the same counts in both groups. "Early" words see R alone first and D alone last; "late" words the reverse; 2 ambiguous [R, D] trials in between. Test: 24-AFC | late − early | +.165 | −.007 | .988 |
+
+What every theory predicts:
+
+| contrast | ≈ 0 | positive | negative |
+|---|---|---|---|
+| ME vs co-occurrence | fazly, baseline (.000); Bayesian_decay .04 | kachergis and uncfam +.47 to +.50, tilles +.35, `xsl_07` +.30, `xsl_09`–`14` +.18 to +.26, `xsl_03`–`06`, `xsl_08` +.09 to +.11 | |
+| hub vs private | fazly, baseline (.000) | | every other theory: kachergis and uncfam −.14 to −.15, Bayesian_decay −.07, generated −.19 to −.36, tilles −.38 |
+| trial order | fazly, baseline, Bayesian_decay, uncfam_gamma, tilles, `xsl_03`–`08` (all within ±.05) | kachergis +.17, uncfam_attention +.14 | `xsl_09`–`14` −.15 to −.23 |
+
+- **One lever.** All three designs put a single word on each trial. Fazly
+  normalises alignments only across the words on a trial, so with one word
+  it reduces to co-occurrence counting. It predicts exactly the baseline's
+  zero on any contrast that counting cannot see. This is a real mechanistic
+  difference: fazly has no object-side competition. But the designer found
+  one lever and used it three times, although the queue was in its prompt.
+  The ME design's outcome is also close to foregone, given how robust mutual
+  exclusivity is in people.
+- **The rationale can be wrong while the design is fine.** For the hub
+  design, the designer argued that kachergis's entropy-weighted attention
+  would favour hub referents (+.4 to +.6). The computed prediction is the
+  opposite (−.14): hub referents lose because other words also claim them.
+  The design was accepted on the computed predictions, which the decision
+  rule uses. The rationale shipped with a queued design must therefore be
+  checked against those predictions before it is pre-registered.
+- **The trial-order design is a three-way test.** The question is whether
+  the first unambiguous exposure or the last one wins when counts are equal.
+  Kachergis and uncfam_attention predict that late words are learned better
+  (familiarity-weighted attention lets the decoy capture the ambiguous
+  trials for early words). The commitment-gated family predicts the reverse
+  (early commitment protects the referent). Fazly and the other counting-like
+  models predict no difference. Of the six designs so far, it is the only
+  one on which `xsl_14` and kachergis predict opposite signs.
+- Cost ≈ $0.54 (3 LLM calls).
+
+**Caveats (both runs).**
+- Power assumes one of the two theories generated the data. In the filtering
+  conditions people matched neither, so the pre-registration should add a
+  third outcome: the human value outside both theories' predictive intervals.
+- Several designs use structures absent from the corpus: 1×1 trials, more
+  words than objects, and block structure. There the predictions extrapolate
+  the fitted parameters.
+- Within-arm item contrasts get high power from 50 people. Test order and
+  item counterbalancing beyond random assignment are not modelled.
+- The designer's mechanistic rationales are LLM claims. The predictions are
+  computed, and the all-theories table is the check on them; for the
+  retroactive design, for instance, fazly's prediction of exactly zero
+  confirms its stated reason.
+- Cost ≈ $0.37 (4 LLM calls, 40k input and 29k output tokens).
+
 ## Caveats
 
 - **One lineage, one LLM.** Every leading theory refines `xsl_01`, and only
@@ -378,8 +517,9 @@ per million input / output tokens):
 | generation rounds 10–12 | ≈ $0.85 |
 | debate rounds 1–3 | ≈ $1.04 |
 | gated debate rounds 4–6 | ≈ $1.48 |
+| Phase 3 designs (7 proposals) | ≈ $0.91 |
 | re-scores, robust refits, sensitivity checks | none (local fitting) |
-| **total** | **≈ $7.2** |
+| **total** | **≈ $8.1** |
 
 Compute dominates wall time: each debate round took about 4 h, almost all
 of it fitting and cross-validating candidates. Early in the project the
@@ -395,9 +535,18 @@ the run resumed from its saved state.
    repetitions help, early exposures don't hurt". Seed generation from fazly,
    adding load-dependent encoding, or ask for a hybrid with both mechanisms to
    measure the trade-off directly.
-2. **Phase 3, prospective designs.** Use `xsl_14` vs fazly. They disagree
-   most on early × late exposure crossed with load (objects per trial), and
-   both are wrong on part of it, so new designs there would be informative.
+2. **Phase 3, next.**
+   - Add a corpus-redundancy check: reject designs whose contrast the
+     existing conditions already pin down.
+   - Add a "neither theory" outcome to the decision rule.
+   - Export the retroactive-reappearance and trial-order designs for a
+     human run.
+   - Push the designer toward diversity: queued designs are in its prompt,
+     but it reused the one-word-per-trial lever three times.
+   - Target the open filtering interaction (early × late exposure), where
+     both theories are wrong.
+   - Run `xsl_14` vs kachergis: they agree in sign on four of the six
+     contrasts so far.
 3. **Reparameterise the commitment-gated family** (`lam` and `xi` at their
    bounds), and fix `lapse` at 0 under random ability: one fewer parameter
    for every theory.
@@ -523,6 +672,14 @@ cp -R results/xsl/debate_xsl_12_vs_inc_fazly results/xsl/debate_xsl_12_vs_inc_fa
 uv run python main_xsl_debate.py --a xsl_12 --b inc_fazly --gate nll_and_query --rounds 3 \
     --out results/xsl/debate_xsl_12_vs_inc_fazly_gated \
     --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5
+```
+
+```bash
+# Phase 3 prospective designs (resumable; --n_designs adds design slots)
+uv run python main_xsl_design.py --a xsl_14 --b inc_fazly --n_designs 3 --max_iters 4 \
+    --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5
+uv run python main_xsl_design.py --a kachergis --b inc_fazly --debate results/xsl/designs_kachergis_vs_inc_fazly \
+    --n_designs 3 --max_iters 4 --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5
 ```
 
 Every LLM exchange is logged under `results/xsl/<run>/round_NN/prompts/`
