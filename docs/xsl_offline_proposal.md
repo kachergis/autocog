@@ -293,7 +293,8 @@ results/xsl/
    decided by a pre-registered midpoint rule. The designer writes a design
    generator with knobs, and a local search picks the knob setting. Three of
    four proposals were accepted and queued with all 19 theories' frozen
-   predictions. A second run, for kachergis vs fazly, accepted 3 of 3.
+   predictions. Runs for kachergis vs fazly and `xsl_14` vs kachergis
+   accepted 3 of 3 each.
    Results are in the mode-B report.
 4. **Evaluation.** Holdout vs the bakeoff winner; ablations (no stream 2; A vs
    B); recovery checks with an incumbent as ground truth. Then mode A.
