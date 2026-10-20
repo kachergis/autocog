@@ -1,12 +1,12 @@
 # Offline AutoCog for cross-situational word learning: mode-B results
 
-Status: **draft, 2026-10-18.** Nine generator rounds, then a re-evaluation of
+Status: **draft, 2026-10-19.** Nine generator rounds, then a re-evaluation of
 every theory on corrected data, against the xsl-bakeoff incumbents: first
 under an item-accuracy objective (with robust fits and a guessing-rate
 sensitivity check), then under a per-subject random-ability likelihood that
 models individual differences directly; then three more generator rounds
 under that likelihood; then a three-round Phase 2 debate between `xsl_12` and
-fazly.
+fazly, continued for three rounds under a stricter accept gate.
 Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 
 | run | what | directory |
@@ -19,6 +19,7 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
 | generation 2 | 3 more rounds (`xsl_10`–`12`) under the random-ability objective, full incumbent field on the leaderboard | [`results/xsl/mode_b_subject/`](../results/xsl/mode_b_subject/) |
 | honest re-evaluation | `xsl_10`–`12` refit with the parameters they had hard-coded freed | [`results/xsl/mode_b_subject_unpinned/`](../results/xsl/mode_b_subject_unpinned/) |
 | debate | Phase 2: `xsl_12` vs fazly, 3 rounds of corpus queries, arbitration and revision (`xsl_13`, `xsl_14`) | [`results/xsl/debate_xsl_12_vs_inc_fazly/`](../results/xsl/debate_xsl_12_vs_inc_fazly/) |
+| gated debate | the same debate continued for rounds 4–6, revisions required to close the query they lost | [`results/xsl/debate_xsl_12_vs_inc_fazly_gated/`](../results/xsl/debate_xsl_12_vs_inc_fazly_gated/) |
 
 ## Summary
 
@@ -52,6 +53,10 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md).
   early exposures are added (`xsl_14` is still 4–5 SE off on fazly's
   queries). The revisions added the requested repetition mechanisms, but the
   fit turned them down: the whole-corpus likelihood does not reward them.
+  **Three more rounds under a gate that requires closing the lost query**
+  (held-out NLL within 10 of `xsl_14`'s, query error down ≥ 1 SE) accepted
+  nothing in 9 candidates: those that moved fazly's queries most cost 31–34
+  held-out NLL, and those that kept their NLL barely moved them.
 - **Under the random-ability likelihood every generated theory out-predicts
   every incumbent.** The interference + test-time claim competition family
   (`xsl_04`–`06`, 8–10 parameters) comes second to fourth; the larger
@@ -408,6 +413,52 @@ a natural discriminating design for Phase 3.
   wall time ≈ 8 hours, almost all of it fitting and cross-validating the 7
   revision candidates.
 
+### Gated continuation (rounds 4–6)
+
+The debate was continued from `xsl_14` vs fazly for three more rounds with
+`--gate nll_and_query`: a revision is accepted only if its held-out NLL is
+at most 10 above the target's (a lower NLL is no longer required) **and** on
+every query the target lost that round its error is at least 1 human SE
+smaller. The generator sees the gate, the query's statistic and the gate's
+verdict on each earlier candidate.
+
+Rounds again split: `xsl_14` won on 225 + 207, 223, and 216 + 223 (fazly 3–7
+SE off); fazly won on the late-repetition gain at 6–9 early
+exposures (`xsl_14` 3.6 SE off), on 2_x8_39_4x4 + 3_x8_369_4x4 +
+temp_cont_2olap2tr_contr + 218 (1.9 SE), and on filt6E_9L + filt9E_9L + those
+mixed-frequency conditions (3.1 SE). The arbiter revised `xsl_14` every time.
+
+| round | candidate | k | held-out NLL (gate ≤ 16,890.2) | lost query error, SE (gate) |
+|---|---|---|---|---|
+| 4 | commitment-protected pair-count accumulation | 18 | 16,882.7 | 3.6 → 3.6 (≤ 2.6) |
+| 4 | commit-gated repetition-count amplification at test | 19 | 16,904.9 | 3.6 → 3.6 |
+| 4 | contingency-weighted retrieval | 18 | 16,894.1 | 3.6 → 3.6 |
+| 5 | soft rich-get-richer alignment channel (Fazly-like) | 18 | 16,911.5 | 1.9 → **1.4** (≤ 0.9) |
+| 5 | two-timescale contiguity trace | 19 | 16,886.0 | 1.9 → 1.7 |
+| 5 | margin-gated uncommitted returns | 18 | 16,905.2 | 1.9 → 1.7 |
+| 6 | evidence-growing ceiling and winner sharpening | 20 | 16,914.7 | 3.1 → **2.5** (≤ 2.1) |
+| 6 | parallel count familiarity trace | 19 | 16,893.8 | 3.1 → 3.2 |
+| 6 | consistency-gated growing returns | 17 | 16,889.7 | 3.1 → 3.2 |
+
+**No candidate passed.** In round 4 every candidate, once fitted, predicted the
+same late-repetition gain as `xsl_14` (.041–.043 against people's .177): the
+mechanisms were present in the code and switched off by the fit. In rounds 5
+and 6 the two candidates that moved fazly's query most — one by adding a
+Fazly-style alignment channel — paid 31–34 held-out NLL for it, and the
+candidates that stayed within the NLL tolerance moved it by 0.2 SE or not at
+all. Within this family, then, fitting the filtering and mixed-frequency
+repetition effects costs fit elsewhere in the corpus; the repetition failure
+is not an omission the generator can patch locally. Either the family's
+shared core (load-limited competitive encoding with commitment-gated
+exclusion) is what suppresses late gains after early exposure, or the corpus
+itself pulls in two directions — which a model with both mechanisms and
+condition-level fits would tell apart.
+
+Cost ≈ $1.48 in logged tokens (378k input, 72k output); run time ≈ 12 h
+(about 4 h per round), split by a stop when the OpenRouter credits ran out
+after round 4 (the run resumed from the saved state). One round-4 critique was lost to that error;
+it does not affect acceptance.
+
 ## How the theories were found
 
 The first nine generator rounds ran under the multinomial objective on the
@@ -509,7 +560,7 @@ or billing not visible in per-call usage. OpenRouter's Activity page will
 settle it; treat ≈ $0.30 per round as a lower bound. The re-evaluation
 (re-score, robust refits, sensitivity) used no LLM calls. Rounds 10–12 cost
 ≈ $0.85 in logged tokens (including the stopped round), and the three-round
-debate ≈ $1.04.
+debate ≈ $1.04, and the gated continuation ≈ $1.48.
 
 ## Next steps
 
@@ -527,8 +578,11 @@ debate ≈ $1.04.
    reported separately).
 5. **Target the filtering interaction**: no theory gets "late repetitions
    help, early exposures don't hurt". Either a directed generation round with
-   that as the guide, or a debate revision gate that requires the lost
-   query's error to shrink (see *What the debate showed*).
+   that as the guide. The gated debate (rounds 4–6) shows that patching the
+   commitment-gated family does not do it; the next tries are a structurally
+   different seed built around repetition (e.g. starting from fazly and adding
+   load-dependent encoding), or a hybrid with both mechanisms to measure the
+   trade-off directly.
 6. Phase 3: propose discriminating designs between `xsl_14` and fazly —
    early × late exposure crossed with load (objects per trial) is where they
    disagree most, and both are wrong on part of it.
@@ -569,6 +623,12 @@ uv run python main_xsl_offline.py --llm_provider openrouter --llm_model anthropi
 
 # Phase 2 debate, from the honest leaderboard (resumable; --rounds adds rounds)
 uv run python main_xsl_debate.py --a xsl_12 --b inc_fazly --rounds 3 \
+    --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5
+
+# gated continuation: copy that run's state, then 3 more rounds
+cp -R results/xsl/debate_xsl_12_vs_inc_fazly results/xsl/debate_xsl_12_vs_inc_fazly_gated
+uv run python main_xsl_debate.py --a xsl_12 --b inc_fazly --gate nll_and_query --rounds 3 \
+    --out results/xsl/debate_xsl_12_vs_inc_fazly_gated \
     --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5
 ```
 

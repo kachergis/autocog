@@ -1,0 +1,68 @@
+name: Soft-sharpness interference learning with contiguity boost
+theory: 'Learning is competitive and interference-limited. Each word splits credit over the co-present
+  objects, and each object over the co-present words, in proportion to current strength raised to a fitted
+  exponent s. The exponent is allowed to fall below 1, so competition can be soft as well as winner-take-all.
+  A pair gains the product of the two responsibilities, which gives soft mutual exclusivity and explaining
+  away. The gain saturates and is weakly gated down as more objects are visible. Retrieval-induced interference
+  prunes a word''s links to absent objects and an object''s links to absent words, at a rate that is a
+  power law of trial load (words x objects). A one-trial memory trace marks pairs that co-occurred on
+  the immediately preceding trial, and such repeated pairs receive amplified credit (1+r). This is how
+  temporal contiguity helps. At test, an object already claimed by other words is a poorer referent: association
+  is multiplied by the tested word''s share of that object''s total association, raised to b. A small
+  retrieval floor is added, and choice is a power-law Luce rule.'
+learn: |-
+  def learn(params, trials, n_words, n_objects):
+      d = params['d']
+      q = params['q']
+      lam = params['lam']
+      Mmax = params['Mmax']
+      fl = params['fl']
+      b = params['b']
+      s = params['s']
+      r = params['r']
+      c = 0.5
+      g = 0.5
+      eps = 0.1
+      M = np.zeros((n_words, n_objects))
+      prev = np.zeros((n_words, n_objects))
+      for words, objs in trials:
+          words = np.asarray(words)
+          objs = np.asarray(objs)
+          nw = len(words)
+          no = len(objs)
+          enc = 1.0 / (1.0 + (no / c) ** g)
+          deff = min(0.95, d * (nw * no / 12.0) ** q)
+          ix = np.ix_(words, objs)
+          blk = M[ix].copy()
+          boost = 1.0 + r * prev[ix]
+          M[words, :] *= (1.0 - deff)
+          M[:, objs] *= (1.0 - deff)
+          st = (blk + eps) ** s
+          rw = st / st.sum(1, keepdims=True)
+          ro = st / st.sum(0, keepdims=True)
+          inc = rw * ro
+          sat = np.clip(1.0 - blk / Mmax, 0.0, 1.0)
+          M[ix] = blk + lam * enc * boost * inc * sat
+          prev[:, :] = 0.0
+          prev[ix] = 1.0
+      col = M.sum(0, keepdims=True)
+      share = (M + 1e-9) / (col + 0.05)
+      out = M * share ** b
+      return out + fl + 1e-6
+parameters:
+  d: '[0.0, 1.0]'
+  q: '[0.0, 2.0]'
+  lam: '[0.05, 4]'
+  Mmax: '[0.3, 10]'
+  fl: '[0.0, 1.0]'
+  b: '[0.0, 3.0]'
+  s: '[0.3, 4.0]'
+  r: '[0.0, 3.0]'
+  ch_dec: '[0.3, 6]'
+rationale: The best candidate pinned s at its lower bound of 1, so the optimizer wants softer competition
+  than the bounds allowed. Extending s below 1 removes that constraint. The one-trial contiguity boost
+  targets the temporal-contiguity conditions, which the model underpredicts (about 0.33 against 0.40-0.49).
+  The boost is negligible in randomly ordered designs, so it should not hurt the other conditions. The
+  floor range is reduced so lapse and the floor do not flatten the contrast between target and non-target
+  objects. The load-scaled interference and the test-time claim competition are kept from the current
+  best.

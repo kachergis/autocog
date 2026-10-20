@@ -278,8 +278,10 @@ results/xsl/
    picks the theory to revise; the generator revises it with the target as
    the bar on held-out NLL (`main_xsl_debate.py`, `src/xsl/debate.py`).
    Result: two accepted revisions (`xsl_14`, held-out NLL 16,880.2, new best),
-   but the repetition failure fazly exposed (filtering experiments) persists;
-   see the mode-B report.
+   but the repetition failure fazly exposed (filtering experiments) persists.
+   Three more rounds with `--gate nll_and_query` (a revision must close the
+   query it lost, within 10 held-out NLL) accepted none of 9 candidates; see
+   the mode-B report.
 3. **Prospective stream.** Design generator + validator, incumbent service,
    divergence-at-matched-fit acceptance, the queue.
 4. **Evaluation.** Holdout vs the bakeoff winner; ablations (no stream 2; A vs
