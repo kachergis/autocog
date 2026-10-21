@@ -1,0 +1,92 @@
+name: Contiguity-boosted commitment-gated exclusion with exposure scaling
+theory: Learning is competitive and interference-limited. Each pair gains the product of word-side and
+  object-side responsibilities. Retrieval-induced interference erodes links to absent partners, at a rate
+  set by trial load and by the number of objects. A fading trace of recent co-occurrence strongly amplifies
+  repeated pairs, so temporal contiguity and immediate repetition have a large effect. A word commits
+  once one object dominates its association, and that object is then withdrawn from other co-present words,
+  which redistributes the freed credit. Encoding efficiency changes with a word's accumulated exposure,
+  with diminishing returns when kappa is negative, so frequent words do not snowball to certainty. At
+  test, objects claimed by other words are discounted by share^b, and choice is a power-law Luce rule.
+  There is no passive decay, because it was fitted to zero.
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      d = params['d']
+      lam = params['lam']
+      Mmax = params['Mmax']
+      fl = params['fl']
+      b = params['b']
+      s = params['s']
+      r = params['r']
+      p = params['p']
+      rho = params['rho']
+      th = params['th']
+      kc = params['kc']
+      xi = params['xi']
+      kappa = params['kappa']
+      q = 0.07
+      c = 0.5
+      g = 0.5
+      eps = 0.1
+      steep = 8.0
+      M = np.zeros((n_words, n_objects))
+      prev = np.zeros((n_words, n_objects))
+      cnt = np.zeros(n_words)
+      for words, objs in trials:
+          words = np.asarray(words)
+          objs = np.asarray(objs)
+          nw = len(words)
+          no = len(objs)
+          enc = 1.0 / (1.0 + (no / c) ** g)
+          deff = min(0.95, d * (nw * no / 12.0) ** q * (no / 4.0) ** p)
+          ix = np.ix_(words, objs)
+          rows = M[words, :]
+          rs = rows / (rows.sum(1, keepdims=True) + 0.3)
+          mx = rs.max(1)
+          z = np.clip(steep * (mx - th), -30.0, 30.0)
+          commit = 1.0 / (1.0 + np.exp(-z))
+          rsb = rs[:, objs]
+          ratio = (rsb / (mx[:, None] + 1e-9)) ** 4
+          blk = M[ix].copy()
+          boost = 1.0 + r * prev[ix] + kc * commit[:, None] * ratio
+          contrib = commit[:, None] * rsb
+          tot = contrib.sum(0, keepdims=True)
+          cl = np.clip(tot - contrib, 0.0, 1.0)
+          M[words, :] *= (1.0 - deff)
+          M[:, objs] *= (1.0 - deff)
+          st = (blk + eps) ** s
+          stw = st * (1.0 - xi * cl)
+          rw = stw / (stw.sum(1, keepdims=True) + 1e-12)
+          ro = st / st.sum(0, keepdims=True)
+          inc = rw * ro
+          sat = np.clip(1.0 - blk / Mmax, 0.0, 1.0)
+          expo = ((1.0 + cnt[words]) ** kappa)[:, None]
+          M[ix] = blk + lam * enc * expo * boost * inc * sat
+          cnt[words] += 1.0
+          prev *= rho
+          prev[ix] = 1.0
+      col = M.sum(0, keepdims=True)
+      share = (M + 1e-9) / (col + 0.05)
+      out = M * share ** b
+      return out + fl + 1e-6
+parameters:
+  d: '[0.0, 1.0]'
+  lam: '[0.05, 6]'
+  Mmax: '[0.3, 30]'
+  fl: '[0.0, 0.5]'
+  b: '[0.0, 3.0]'
+  s: '[0.01, 4]'
+  r: '[0.0, 12.0]'
+  ch_dec: '[0.3, 3]'
+  p: '[-0.5, 3.0]'
+  rho: '[0.0, 0.9]'
+  th: '[0.2, 0.9]'
+  kc: '[0, 40]'
+  xi: '[0.0, 1.0]'
+  kappa: '[-0.6, 1.0]'
+rationale: This keeps the best-fitting commitment-gated exclusion core and removes the passive-decay parameter,
+  which sat at its zero bound and so cost complexity without helping. It raises the upper bound on the
+  contiguity boost r, which was pinned at 3 in the accepted fit. That should give the temporal-contiguity
+  and immediate-repetition conditions, and small-context designs such as 215 and 225, room to rise without
+  changing anything else. The exposure term (kappa) is kept because it gave the accepted gain over xsl_10.
+  With fewer free parameters the cross-validated fit should generalise slightly better, and a larger r
+  can help the sparse, repeat-heavy conditions that are currently underpredicted.

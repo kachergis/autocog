@@ -1,0 +1,13 @@
+name: Co-occurrence counting
+theory: >-
+  Learners simply count how often each word and object occur together across
+  trials, with no attention, competition or forgetting.
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      m = np.zeros((n_words, n_objects))
+      for words, objects in trials:
+          m[np.ix_(words, objects)] += 1
+      return m
+parameters: {}
+rationale: >-
+  Zero-parameter floor: any theory worth keeping must beat raw co-occurrence.

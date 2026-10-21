@@ -1,0 +1,45 @@
+name: Uncertainty/familiarity associative learning with trial-level attention (uncfam_attention)
+theory: >-
+  uncfam (Kachergis, Yu & Shiffrin 2012) in which the amount of associative weight distributed on a
+  trial scales with how uncertain that trial's objects are relative to the mean uncertainty of all
+  objects seen so far: learners are more alert on trials with more uncertain items.
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      X, B, C = params["X"], params["B"], params["C"]
+      start = 0.01
+      m = np.zeros((n_words, n_objects))
+
+      def entropy(p):  # XSLmodels shannon_entropy: NaN for an all-zero row
+          s = p.sum()
+          if s <= 0:
+              return np.nan
+          q = p[p > 0] / s
+          return -(q * np.log2(q)).sum()
+
+      for words, objects in trials:
+          block = m[np.ix_(words, objects)]
+          block[block == 0] = start
+          m[np.ix_(words, objects)] = block
+          fam_o = m.sum(axis=0) > 0
+          fam_w = m.sum(axis=1) > 0
+          for w in words:
+              m[w, fam_o & (m[w, :] == 0)] = start
+          for o in objects:
+              m[fam_w & (m[:, o] == 0), o] = start
+
+          ent_w_all = np.array([entropy(m[i, :]) for i in range(n_words)])
+          ent_o_all = np.array([entropy(m[:, j]) for j in range(n_objects)])
+          tr_mean = np.nanmean(ent_o_all[objects])
+          all_mean = np.nanmean(ent_o_all)
+          scaled_X = X if (not np.isfinite(all_mean) or all_mean == 0) else X * tr_mean / all_mean
+
+          assocs = m[np.ix_(words, objects)]
+          weights = assocs * np.outer(np.exp(B * ent_w_all[words]), np.exp(B * ent_o_all[objects]))
+          m *= C
+          m[np.ix_(words, objects)] += scaled_X * weights / weights.sum()
+      return m
+parameters:
+  X: "[0.001, 5]"
+  B: "[0.1, 15]"
+  C: "[0.5, 1]"
+rationale: xsl-bakeoff v05 incumbent (XSLmodels uncfam_attention); v05 bounds.

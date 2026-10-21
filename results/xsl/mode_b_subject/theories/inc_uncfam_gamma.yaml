@@ -1,0 +1,40 @@
+name: Uncertainty/familiarity associative learning with a familiarity exponent (uncfam_gamma)
+theory: 'Kachergis, Yu & Shiffrin (2012) uncfam with familiarity raised to a free power gamma: attention
+  to a pair is assoc^gamma * exp(B * H(word)) * exp(B * H(object)). gamma = 1 is uncfam; gamma < 1 dampens
+  the rich-get-richer bias.'
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      X, B, C, gamma = params["X"], params["B"], params["C"], params["gamma"]
+      start = 0.01
+      m = np.zeros((n_words, n_objects))
+
+      def entropy(p):
+          q = p[p > 0] / p.sum()
+          return -(q * np.log2(q)).sum()
+
+      for words, objects in trials:
+          # seed never-seen pairs on this trial, and pairs between trial
+          # stimuli and already-familiar stimuli, at a small start value
+          block = m[np.ix_(words, objects)]
+          block[block == 0] = start
+          m[np.ix_(words, objects)] = block
+          fam_o = m.sum(axis=0) > 0
+          fam_w = m.sum(axis=1) > 0
+          for w in words:
+              m[w, fam_o & (m[w, :] == 0)] = start
+          for o in objects:
+              m[fam_w & (m[:, o] == 0), o] = start
+
+          assocs = m[np.ix_(words, objects)]
+          h_w = np.array([entropy(m[w, :]) for w in words])
+          h_o = np.array([entropy(m[:, o]) for o in objects])
+          weights = assocs ** gamma * np.outer(np.exp(B * h_w), np.exp(B * h_o))
+          m *= C
+          m[np.ix_(words, objects)] += X * weights / weights.sum()
+      return m
+parameters:
+  X: '[0.001, 5]'
+  B: '[0.1, 15]'
+  C: '[0.5, 1]'
+  gamma: '[0.1, 6]'
+rationale: xsl-bakeoff v05 incumbent (XSLmodels uncfam_gamma); v05 bounds.

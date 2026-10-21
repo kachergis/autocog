@@ -1,0 +1,3537 @@
+[
+  {
+    "slot": 0,
+    "iter": 0,
+    "error": null,
+    "proposal": {
+      "name": "me_vs_cooccurrence_1word_trios",
+      "rationale": "The theories differ in where competition lies. Kachergis spreads attention across the objects within a trial, weighting each by its uncertainty (column entropy) and familiarity. Objects that already have a strong partner are therefore down-weighted, which gives a strong mutual-exclusivity bias. Fazly normalises alignments across the words competing for an object. With one word per trial there is no competition, so it reduces to co-occurrence counting. It cannot use the fact that an object already belongs to another word. Design: 6 known words are first taught with their objects in 1x1 trials. Then each of 6 'ME' words is always shown alone with the same 3 objects: one novel target and 2 known objects (the referents of other, already learned words). Each of 6 'control' words is always shown with 3 novel objects. Within each trio the objects co-occur identically with the word on every trial. Cross-trial statistics therefore cannot identify the target, and only the known/novel status of the objects can. Kachergis should pick the novel target in ME trios, because known objects have low entropy and get little attention. Fazly gives equal association to all three objects, so it sits at 1/3 on both item types. The control items are matched on trio structure and number of exposures, and they remove any generic offset. The contrast is a within-arm item-type difference.",
+      "generator_source": "def make_design(knobs, rng):\n    r1 = int(knobs['r1'])\n    r2 = int(knobs['r2'])\n    nk = 6\n    # known words 0-5 with objects 0-5\n    # ME words 6-11, targets objects 6-11, plus 2 known distractors each\n    # control words 12-17, objects 12+3i .. 14+3i (all novel)\n    trio = {}\n    group = {}\n    correct = {}\n    for i in range(nk):\n        w = 6 + i\n        d = rng.choice(nk, 2, replace=False)\n        trio[w] = [6 + i, int(d[0]), int(d[1])]\n        group[w] = 'me'\n        correct[w] = 6 + i\n    for i in range(nk):\n        w = 12 + i\n        objs = [12 + 3 * i, 13 + 3 * i, 14 + 3 * i]\n        trio[w] = objs\n        group[w] = 'ctrl'\n        correct[w] = int(objs[rng.integers(3)])\n    # phase 1: known words, 1x1 trials\n    p1 = [w for w in range(nk) for _ in range(r1)]\n    p1 = [p1[j] for j in rng.permutation(len(p1))]\n    trials = [[[int(w)], [int(w)]] for w in p1]\n    # phase 2: one word, three objects\n    p2 = [w for w in range(6, 18) for _ in range(r2)]\n    p2 = [p2[j] for j in rng.permutation(len(p2))]\n    for w in p2:\n        objs = [trio[w][j] for j in rng.permutation(3)]\n        trials.append([[int(w)], [int(o) for o in objs]])\n    test = []\n    for w in range(6, 18):\n        cands = [int(o) for o in trio[w]]\n        test.append({'word': int(w), 'candidates': cands, 'correct': int(correct[w]), 'group': group[w]})\n    for w in range(nk):\n        test.append({'word': int(w), 'candidates': list(range(nk)), 'correct': int(w), 'group': 'known'})\n    order = rng.permutation(len(test))\n    test = [test[j] for j in order]\n    return {'arms': {'main': {'trials': trials, 'test': test}}}\n",
+      "knobs": {
+        "r1": [
+          3,
+          4,
+          6
+        ],
+        "r2": [
+          4,
+          5,
+          6
+        ]
+      },
+      "contrast_source": "def contrast(acc, groups):\n    a = acc['main']\n    g = groups['main']\n    return a[g == 'me'].mean() - a[g == 'ctrl'].mean()\n",
+      "prediction": "Kachergis: the novel target wins the attention competition in ME trios, so ME accuracy (3-AFC) is well above chance, roughly 0.7-0.95. Control accuracy is about 1/3 because the three novel objects are symmetric. Contrast about +0.4 to +0.6. Inc_fazly: with a single word per trial, every co-present object gets nearly the same alignment, so the target and the two known distractors are tied. ME and control accuracy both sit near 1/3, and the contrast is about 0 (within about \u00b10.05). A threshold near +0.2 to +0.25 separates the theories."
+    },
+    "accepted": true,
+    "summary": "me_vs_cooccurrence_1word_trios: 27/27 candidate designs valid; best setting r1=3, r2=4 (seed 0): main: 18 words x 30 objects, 66 trials (1.0x2.5 per trial), 18 test items (3/6-AFC).\n  final estimate: predicted contrast kachergis +0.4758, inc_fazly +0.0000 (simulated SD 0.0404 / 0.0332 at N=50 per arm); decide kachergis if the contrast is on its side of +0.2379; P(correct | kachergis) 1.000, P(correct | inc_fazly) 1.000; power 1.000",
+    "search_power": 1.0,
+    "power": {
+      "predicted": {
+        "kachergis": 0.4758027552838576,
+        "inc_fazly": 0.0
+      },
+      "threshold": 0.2379013776419288,
+      "hit_rate": {
+        "kachergis": 1.0,
+        "inc_fazly": 1.0
+      },
+      "sim_sd": {
+        "kachergis": 0.04040519273558783,
+        "inc_fazly": 0.03322338864080209
+      },
+      "power": 1.0,
+      "n_subj": 50,
+      "n_sims": 2000
+    },
+    "design": {
+      "name": "me_vs_cooccurrence_1word_trios",
+      "knobs": {
+        "r1": 3,
+        "r2": 4
+      },
+      "seed": 0,
+      "arms": [
+        {
+          "name": "main",
+          "n_words": 18,
+          "n_objects": 30,
+          "n_trials": 66,
+          "trials": [
+            [
+              [
+                "1"
+              ],
+              [
+                "1"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "1",
+                "7",
+                "5"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "17",
+                "15",
+                "16"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7",
+                "5",
+                "1"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "2",
+                "10",
+                "3"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "3",
+                "9",
+                "4"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "22",
+                "21",
+                "23"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "19",
+                "20",
+                "18"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "25",
+                "26",
+                "24"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "29",
+                "28",
+                "27"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "0",
+                "5",
+                "8"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "29",
+                "28",
+                "27"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "17",
+                "16",
+                "15"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "17",
+                "16",
+                "15"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "29",
+                "27",
+                "28"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "5",
+                "1",
+                "7"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "0",
+                "8",
+                "5"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "26",
+                "25",
+                "24"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "3",
+                "10",
+                "2"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "5",
+                "11",
+                "3"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "20",
+                "18",
+                "19"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "12",
+                "13",
+                "14"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "26",
+                "25",
+                "24"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "3",
+                "5",
+                "11"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "18",
+                "20",
+                "19"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "0",
+                "5",
+                "8"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "9",
+                "4",
+                "3"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6",
+                "4",
+                "3"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "12",
+                "13",
+                "14"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "22",
+                "21",
+                "23"
+              ]
+            ],
+            [
+              [
+                "14"
+              ],
+              [
+                "20",
+                "18",
+                "19"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "3",
+                "4",
+                "9"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "5",
+                "0",
+                "8"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "3",
+                "2",
+                "10"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "3",
+                "9",
+                "4"
+              ]
+            ],
+            [
+              [
+                "13"
+              ],
+              [
+                "15",
+                "17",
+                "16"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "22",
+                "21",
+                "23"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "2",
+                "3",
+                "10"
+              ]
+            ],
+            [
+              [
+                "17"
+              ],
+              [
+                "27",
+                "29",
+                "28"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6",
+                "3",
+                "4"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6",
+                "4",
+                "3"
+              ]
+            ],
+            [
+              [
+                "16"
+              ],
+              [
+                "26",
+                "25",
+                "24"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "14",
+                "13",
+                "12"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "3",
+                "11",
+                "5"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "3",
+                "4",
+                "6"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7",
+                "5",
+                "1"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "11",
+                "5",
+                "3"
+              ]
+            ],
+            [
+              [
+                "12"
+              ],
+              [
+                "13",
+                "12",
+                "14"
+              ]
+            ],
+            [
+              [
+                "15"
+              ],
+              [
+                "23",
+                "21",
+                "22"
+              ]
+            ]
+          ],
+          "test": [
+            {
+              "word": "17",
+              "candidates": [
+                "27",
+                "28",
+                "29"
+              ],
+              "correct": "27",
+              "group": "ctrl"
+            },
+            {
+              "word": "15",
+              "candidates": [
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "23",
+              "group": "ctrl"
+            },
+            {
+              "word": "16",
+              "candidates": [
+                "24",
+                "25",
+                "26"
+              ],
+              "correct": "26",
+              "group": "ctrl"
+            },
+            {
+              "word": "10",
+              "candidates": [
+                "10",
+                "2",
+                "3"
+              ],
+              "correct": "10",
+              "group": "me"
+            },
+            {
+              "word": "0",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+              ],
+              "correct": "0",
+              "group": "known"
+            },
+            {
+              "word": "6",
+              "candidates": [
+                "6",
+                "4",
+                "3"
+              ],
+              "correct": "6",
+              "group": "me"
+            },
+            {
+              "word": "5",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+              ],
+              "correct": "5",
+              "group": "known"
+            },
+            {
+              "word": "3",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+              ],
+              "correct": "3",
+              "group": "known"
+            },
+            {
+              "word": "14",
+              "candidates": [
+                "18",
+                "19",
+                "20"
+              ],
+              "correct": "18",
+              "group": "ctrl"
+            },
+            {
+              "word": "7",
+              "candidates": [
+                "7",
+                "5",
+                "1"
+              ],
+              "correct": "7",
+              "group": "me"
+            },
+            {
+              "word": "13",
+              "candidates": [
+                "15",
+                "16",
+                "17"
+              ],
+              "correct": "17",
+              "group": "ctrl"
+            },
+            {
+              "word": "4",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+              ],
+              "correct": "4",
+              "group": "known"
+            },
+            {
+              "word": "11",
+              "candidates": [
+                "11",
+                "3",
+                "5"
+              ],
+              "correct": "11",
+              "group": "me"
+            },
+            {
+              "word": "1",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+              ],
+              "correct": "1",
+              "group": "known"
+            },
+            {
+              "word": "8",
+              "candidates": [
+                "8",
+                "5",
+                "0"
+              ],
+              "correct": "8",
+              "group": "me"
+            },
+            {
+              "word": "9",
+              "candidates": [
+                "9",
+                "4",
+                "3"
+              ],
+              "correct": "9",
+              "group": "me"
+            },
+            {
+              "word": "2",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+              ],
+              "correct": "2",
+              "group": "known"
+            },
+            {
+              "word": "12",
+              "candidates": [
+                "12",
+                "13",
+                "14"
+              ],
+              "correct": "13",
+              "group": "ctrl"
+            }
+          ]
+        }
+      ]
+    },
+    "trials": [
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 4
+        },
+        "seed": 0,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 4
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 4
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 5
+        },
+        "seed": 0,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 5
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 5
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 6
+        },
+        "seed": 0,
+        "power": 0.9966666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 6
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 3,
+          "r2": 6
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 4
+        },
+        "seed": 0,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 4
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 4
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 5
+        },
+        "seed": 0,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 5
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 5
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 6
+        },
+        "seed": 0,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 6
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 4,
+          "r2": 6
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 4
+        },
+        "seed": 0,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 4
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 4
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 5
+        },
+        "seed": 0,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 5
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 5
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 6
+        },
+        "seed": 0,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 6
+        },
+        "seed": 1,
+        "power": 1.0,
+        "error": null
+      },
+      {
+        "knobs": {
+          "r1": 6,
+          "r2": 6
+        },
+        "seed": 2,
+        "power": 1.0,
+        "error": null
+      }
+    ],
+    "seconds": 1.2711947080097161
+  },
+  {
+    "slot": 1,
+    "iter": 0,
+    "error": null,
+    "proposal": {
+      "name": "hub_vs_private_referent_single_word",
+      "rationale": "The design targets how each theory handles object-side uncertainty when trials contain one word. Kachergis weights attention by object entropy (B about 5.3), so it favours objects that co-occur with many words ('hub' objects) and neglects objects tied to one word only ('private' objects). Fazly normalises alignments only across the words in a trial. With one word per trial there is no competition, so it is pure within-word co-occurrence counting and cannot use how many other words an object appears with. Each word has a fixed trio of objects (referent plus k companions) that co-occur with it on every trial, so the within-word counts are exactly tied. In group 'hubref', the referent is a hub object (it also appears as a companion in other words' trials) and the companions are private to that word. In group 'privref', the referent is private and the companions are hubs. Fazly is therefore at about 1/k+1 on both groups. Kachergis should be well above that on 'hubref' and below it on 'privref'. The contrast is a within-arm item-type difference with identical trial structure, exposure counts and candidate sets, so only the hub/private role of the referent changes. This is the opposite manipulation to a known-object ME design: it uses no pre-training and tests attraction to high-entropy objects rather than avoidance of low-entropy ones.",
+      "generator_source": "def make_design(knobs, rng):\n    k = int(knobs['k'])\n    reps = int(knobs['reps'])\n    n = 6\n    # words 0..5: A words (private referent, hub companions); words 6..11: B words (hub referent, private companions)\n    # objects 0..5 hubs; 6..11 private referents of A words; 12.. private companions of B words\n    trios = {}\n    ref = {}\n    grp = {}\n    for i in range(n):\n        r = 6 + i\n        comp = [(i + j) % n for j in range(k)]\n        trios[i] = [r] + comp\n        ref[i] = r\n        grp[i] = 'privref'\n    for i in range(n):\n        w = n + i\n        comp = [12 + i * k + j for j in range(k)]\n        trios[w] = [i] + comp\n        ref[w] = i\n        grp[w] = 'hubref'\n    words = list(range(2 * n))\n    tokens = np.array([w for w in words for _ in range(reps)])\n    tokens = rng.permutation(tokens)\n    trials = []\n    for w in tokens:\n        objs = [int(o) for o in rng.permutation(np.array(trios[int(w)]))]\n        trials.append([[int(w)], objs])\n    all_objs = sorted({o for t in trials for o in t[1]})\n    test = []\n    for w in words:\n        test.append({'word': int(w), 'candidates': list(all_objs), 'correct': int(ref[w]), 'group': grp[w]})\n    return {'arms': {'x': {'trials': trials, 'test': test}}}\n",
+      "knobs": {
+        "k": [
+          2,
+          3
+        ],
+        "reps": [
+          5,
+          6,
+          8
+        ]
+      },
+      "contrast_source": "def contrast(acc, groups):\n    a = acc['x']\n    g = groups['x']\n    return a[g == 'hubref'].mean() - a[g == 'privref'].mean()",
+      "prediction": "Kachergis: strongly positive, about +0.4 to +0.6. Its entropy-driven attention shifts association mass to hub objects, so hub referents are picked far above the 1/(k+1) tie level (about 0.6-0.8) and private referents with hub companions fall below it (about 0.05-0.2). Inc_fazly: about 0 (within a few hundredths either way). Single-word trials give no competition and each word's trio is count-tied, so both groups sit near 1/(k+1) (0.33 for k=2, 0.25 for k=3). The midpoint decision threshold is about +0.2 to +0.3. The within-arm, matched-structure contrast makes ability differences largely cancel."
+    },
+    "accepted": true,
+    "summary": "hub_vs_private_referent_single_word: 18/18 candidate designs valid; best setting k=2, reps=5 (seed 100000): x: 12 words x 24 objects, 60 trials (1.0x3.0 per trial), 12 test items (24-AFC).\n  final estimate: predicted contrast kachergis -0.1432, inc_fazly +0.0000 (simulated SD 0.0343 / 0.0320 at N=50 per arm); decide kachergis if the contrast is on its side of -0.0716; P(correct | kachergis) 0.978, P(correct | inc_fazly) 0.988; power 0.978",
+    "search_power": 0.99,
+    "power": {
+      "predicted": {
+        "kachergis": -0.14319076345573975,
+        "inc_fazly": 5.551115123125783e-17
+      },
+      "threshold": -0.07159538172786985,
+      "hit_rate": {
+        "kachergis": 0.9775,
+        "inc_fazly": 0.988
+      },
+      "sim_sd": {
+        "kachergis": 0.03425489016184404,
+        "inc_fazly": 0.03201738139059956
+      },
+      "power": 0.9775,
+      "n_subj": 50,
+      "n_sims": 2000
+    },
+    "design": {
+      "name": "hub_vs_private_referent_single_word",
+      "knobs": {
+        "k": 2,
+        "reps": 5
+      },
+      "seed": 100000,
+      "arms": [
+        {
+          "name": "x",
+          "n_words": 12,
+          "n_objects": 24,
+          "n_trials": 60,
+          "trials": [
+            [
+              [
+                "9"
+              ],
+              [
+                "18",
+                "3",
+                "19"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "13",
+                "0",
+                "12"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "5",
+                "22",
+                "23"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "2",
+                "1",
+                "7"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "9",
+                "3",
+                "4"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2",
+                "3",
+                "8"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "21",
+                "4",
+                "20"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "4",
+                "9",
+                "3"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "2",
+                "7",
+                "1"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "23",
+                "22",
+                "5"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "16",
+                "17",
+                "2"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5",
+                "0",
+                "11"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0",
+                "6",
+                "1"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5",
+                "11",
+                "0"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "1",
+                "0",
+                "6"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "13",
+                "0",
+                "12"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4",
+                "5",
+                "10"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "23",
+                "22",
+                "5"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "14",
+                "1",
+                "15"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "0",
+                "11",
+                "5"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "16",
+                "17",
+                "2"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "7",
+                "1",
+                "2"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "1",
+                "0",
+                "6"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2",
+                "3",
+                "8"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "9",
+                "4",
+                "3"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "12",
+                "13",
+                "0"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "7",
+                "2"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "21",
+                "20",
+                "4"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "22",
+                "5",
+                "23"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4",
+                "5",
+                "10"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "21",
+                "20",
+                "4"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "15",
+                "1",
+                "14"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "2",
+                "7"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4",
+                "10",
+                "5"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "14",
+                "1",
+                "15"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "11",
+                "5",
+                "0"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4",
+                "5",
+                "10"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "16",
+                "2",
+                "17"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "17",
+                "2",
+                "16"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "0",
+                "12",
+                "13"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "6",
+                "1",
+                "0"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "1",
+                "14",
+                "15"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "1",
+                "14",
+                "15"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "19",
+                "3",
+                "18"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "21",
+                "4",
+                "20"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "4",
+                "9",
+                "3"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "0",
+                "13",
+                "12"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "3",
+                "19",
+                "18"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0",
+                "1",
+                "6"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "8",
+                "2",
+                "3"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "18",
+                "19",
+                "3"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "23",
+                "5",
+                "22"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "4",
+                "20",
+                "21"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2",
+                "3",
+                "8"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "3",
+                "8",
+                "2"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "17",
+                "16",
+                "2"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5",
+                "0",
+                "11"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "10",
+                "5",
+                "4"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "3",
+                "19",
+                "18"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3",
+                "9",
+                "4"
+              ]
+            ]
+          ],
+          "test": [
+            {
+              "word": "0",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "6",
+              "group": "privref"
+            },
+            {
+              "word": "1",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "7",
+              "group": "privref"
+            },
+            {
+              "word": "2",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "8",
+              "group": "privref"
+            },
+            {
+              "word": "3",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "9",
+              "group": "privref"
+            },
+            {
+              "word": "4",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "10",
+              "group": "privref"
+            },
+            {
+              "word": "5",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "11",
+              "group": "privref"
+            },
+            {
+              "word": "6",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "0",
+              "group": "hubref"
+            },
+            {
+              "word": "7",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "1",
+              "group": "hubref"
+            },
+            {
+              "word": "8",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "2",
+              "group": "hubref"
+            },
+            {
+              "word": "9",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "3",
+              "group": "hubref"
+            },
+            {
+              "word": "10",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "4",
+              "group": "hubref"
+            },
+            {
+              "word": "11",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "5",
+              "group": "hubref"
+            }
+          ]
+        }
+      ]
+    },
+    "trials": [
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 5
+        },
+        "seed": 100000,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 5
+        },
+        "seed": 100001,
+        "power": 0.9666666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 5
+        },
+        "seed": 100002,
+        "power": 0.94,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 6
+        },
+        "seed": 100000,
+        "power": 0.7733333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 6
+        },
+        "seed": 100001,
+        "power": 0.6933333333333334,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 6
+        },
+        "seed": 100002,
+        "power": 0.97,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 8
+        },
+        "seed": 100000,
+        "power": 0.7533333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 8
+        },
+        "seed": 100001,
+        "power": 0.6833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "reps": 8
+        },
+        "seed": 100002,
+        "power": 0.9066666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 5
+        },
+        "seed": 100000,
+        "power": 0.9766666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 5
+        },
+        "seed": 100001,
+        "power": 0.9833333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 5
+        },
+        "seed": 100002,
+        "power": 0.98,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 6
+        },
+        "seed": 100000,
+        "power": 0.9566666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 6
+        },
+        "seed": 100001,
+        "power": 0.7566666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 6
+        },
+        "seed": 100002,
+        "power": 0.9566666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 8
+        },
+        "seed": 100000,
+        "power": 0.7633333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 8
+        },
+        "seed": 100001,
+        "power": 0.59,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "reps": 8
+        },
+        "seed": 100002,
+        "power": 0.8433333333333334,
+        "error": null
+      }
+    ],
+    "seconds": 0.8108370000263676
+  },
+  {
+    "slot": 2,
+    "iter": 0,
+    "error": null,
+    "proposal": {
+      "name": "order_matched_counts_novelty_capture",
+      "rationale": "Both theories reach the same word-referent counts here, so any difference comes from how they use order. Each word has two objects: a referent R and a decoy D. R is always seen with the word more often than D (rS+k versus 1+k), and these counts are identical in both item groups. Only the order differs. 'Early' words have R seeded alone first, then k ambiguous [R,D] trials, then D alone once. 'Late' words have D seeded alone once, then k ambiguous trials, then R alone rS times. All trials have one word. In that case inc_fazly's alignment of an object is normalised only across the words in the trial, so it is essentially order-free co-occurrence counting. Its small first-exposure penalty is the same in both groups, so it predicts no difference. Kachergis weights attention by exp(B*entropy) of the object, with B about 5.3. In an ambiguous trial the object that is still unfamiliar (high column entropy) takes almost all of the attention, even when its pair is weaker. In 'early' words, the ambiguous trials therefore go to the decoy D and erode the early advantage of R. In 'late' words, they go to R, the newcomer, and add to R's alone trials. Kachergis therefore predicts a large recency/novelty advantage for late-introduced referents at matched counts. Fazly predicts about zero. The contrast is a within-arm item-type difference. It differs only in presentation order and in which of the two objects is correct, and the objects are randomly assigned to groups.",
+      "generator_source": "def make_design(knobs, rng):\n    n = 12\n    k = int(knobs['k'])\n    rS = int(knobs['rS'])\n    dS = 1\n    perm = rng.permutation(n)\n    early = set(int(x) for x in perm[:n // 2])\n    A, B, C = [], [], []\n    for w in range(n):\n        r, d = w, n + w\n        if w in early:\n            for _ in range(rS):\n                A.append([[w], [r]])\n            for _ in range(dS):\n                C.append([[w], [d]])\n        else:\n            for _ in range(dS):\n                A.append([[w], [d]])\n            for _ in range(rS):\n                C.append([[w], [r]])\n        for _ in range(k):\n            objs = [r, d]\n            if rng.random() < 0.5:\n                objs = [d, r]\n            B.append([[w], objs])\n    trials = []\n    for ph in (A, B, C):\n        idx = rng.permutation(len(ph))\n        trials.extend([ph[int(i)] for i in idx])\n    cands = list(range(2 * n))\n    test = []\n    for w in range(n):\n        test.append({'word': w, 'candidates': cands, 'correct': w,\n                     'group': 'early' if w in early else 'late'})\n    ti = rng.permutation(n)\n    test = [test[int(i)] for i in ti]\n    return {'arms': {'x': {'trials': trials, 'test': test}}}\n",
+      "knobs": {
+        "k": [
+          1,
+          2,
+          3
+        ],
+        "rS": [
+          3,
+          4
+        ]
+      },
+      "contrast_source": "def contrast(acc, groups):\n    a = acc['x']\n    g = groups['x']\n    return a[g == 'late'].mean() - a[g == 'early'].mean()\n",
+      "prediction": "The contrast is mean accuracy on 'late' items minus mean accuracy on 'early' items. Kachergis predicts a clearly positive value, roughly +0.2 to +0.5, growing with k. In ambiguous trials its entropy-weighted attention goes to the less familiar object. That object is the decoy for 'early' words, so their accuracy is lowered and may fall below chance between the two objects when k is large. For 'late' words it is the referent, so their accuracy is raised. inc_fazly predicts about 0, within roughly \u00b10.03. With one word per trial it is nearly order-free counting, and R and D counts are the same in both groups, so its accuracy is about equal for early and late items. Only a small, group-symmetric first-exposure penalty remains."
+    },
+    "accepted": true,
+    "summary": "order_matched_counts_novelty_capture: 18/18 candidate designs valid; best setting k=2, rS=3 (seed 200000): x: 12 words x 24 objects, 72 trials (1.0x1.3 per trial), 12 test items (24-AFC).\n  final estimate: predicted contrast kachergis +0.1651, inc_fazly -0.0073 (simulated SD 0.0365 / 0.0342 at N=50 per arm); decide kachergis if the contrast is on its side of +0.0789; P(correct | kachergis) 0.988, P(correct | inc_fazly) 0.994; power 0.988",
+    "search_power": 0.9933333333333333,
+    "power": {
+      "predicted": {
+        "kachergis": 0.16507870910647732,
+        "inc_fazly": -0.007325441152687129
+      },
+      "threshold": 0.0788766339768951,
+      "hit_rate": {
+        "kachergis": 0.988,
+        "inc_fazly": 0.9935
+      },
+      "sim_sd": {
+        "kachergis": 0.03647135238025106,
+        "inc_fazly": 0.03415726012789148
+      },
+      "power": 0.988,
+      "n_subj": 50,
+      "n_sims": 2000
+    },
+    "design": {
+      "name": "order_matched_counts_novelty_capture",
+      "knobs": {
+        "k": 2,
+        "rS": 3
+      },
+      "seed": 200000,
+      "arms": [
+        {
+          "name": "x",
+          "n_words": 12,
+          "n_objects": 24,
+          "n_trials": 72,
+          "trials": [
+            [
+              [
+                "1"
+              ],
+              [
+                "1"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "9"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "11"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "12"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "9"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "9"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "18"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "15"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "22"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "8"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "11"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "11"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "17"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "14"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "14",
+                "2"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "18",
+                "6"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "1",
+                "13"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0",
+                "12"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "22",
+                "10"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "17",
+                "5"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "23",
+                "11"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "23",
+                "11"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "9",
+                "21"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2",
+                "14"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "12",
+                "0"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "7",
+                "19"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "10",
+                "22"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5",
+                "17"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "15",
+                "3"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4",
+                "16"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "19",
+                "7"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "13",
+                "1"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "18",
+                "6"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "20",
+                "8"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "15",
+                "3"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "9",
+                "21"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "20",
+                "8"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "4",
+                "16"
+              ]
+            ],
+            [
+              [
+                "8"
+              ],
+              [
+                "20"
+              ]
+            ],
+            [
+              [
+                "1"
+              ],
+              [
+                "13"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "10"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6"
+              ]
+            ],
+            [
+              [
+                "11"
+              ],
+              [
+                "23"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0"
+              ]
+            ],
+            [
+              [
+                "3"
+              ],
+              [
+                "3"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6"
+              ]
+            ],
+            [
+              [
+                "4"
+              ],
+              [
+                "16"
+              ]
+            ],
+            [
+              [
+                "9"
+              ],
+              [
+                "21"
+              ]
+            ],
+            [
+              [
+                "6"
+              ],
+              [
+                "6"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "10"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2"
+              ]
+            ],
+            [
+              [
+                "2"
+              ],
+              [
+                "2"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5"
+              ]
+            ],
+            [
+              [
+                "5"
+              ],
+              [
+                "5"
+              ]
+            ],
+            [
+              [
+                "0"
+              ],
+              [
+                "0"
+              ]
+            ],
+            [
+              [
+                "7"
+              ],
+              [
+                "19"
+              ]
+            ],
+            [
+              [
+                "10"
+              ],
+              [
+                "10"
+              ]
+            ]
+          ],
+          "test": [
+            {
+              "word": "6",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "6",
+              "group": "late"
+            },
+            {
+              "word": "4",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "4",
+              "group": "early"
+            },
+            {
+              "word": "11",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "11",
+              "group": "early"
+            },
+            {
+              "word": "10",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "10",
+              "group": "late"
+            },
+            {
+              "word": "9",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "9",
+              "group": "early"
+            },
+            {
+              "word": "3",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "3",
+              "group": "late"
+            },
+            {
+              "word": "1",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "1",
+              "group": "early"
+            },
+            {
+              "word": "0",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "0",
+              "group": "late"
+            },
+            {
+              "word": "2",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "2",
+              "group": "late"
+            },
+            {
+              "word": "5",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "5",
+              "group": "late"
+            },
+            {
+              "word": "8",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "8",
+              "group": "early"
+            },
+            {
+              "word": "7",
+              "candidates": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17",
+                "18",
+                "19",
+                "20",
+                "21",
+                "22",
+                "23"
+              ],
+              "correct": "7",
+              "group": "early"
+            }
+          ]
+        }
+      ]
+    },
+    "trials": [
+      {
+        "knobs": {
+          "k": 1,
+          "rS": 3
+        },
+        "seed": 200000,
+        "power": 0.96,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 1,
+          "rS": 3
+        },
+        "seed": 200001,
+        "power": 0.94,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 1,
+          "rS": 3
+        },
+        "seed": 200002,
+        "power": 0.94,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 1,
+          "rS": 4
+        },
+        "seed": 200000,
+        "power": 0.9333333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 1,
+          "rS": 4
+        },
+        "seed": 200001,
+        "power": 0.9466666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 1,
+          "rS": 4
+        },
+        "seed": 200002,
+        "power": 0.9366666666666666,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "rS": 3
+        },
+        "seed": 200000,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "rS": 3
+        },
+        "seed": 200001,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "rS": 3
+        },
+        "seed": 200002,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "rS": 4
+        },
+        "seed": 200000,
+        "power": 0.99,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "rS": 4
+        },
+        "seed": 200001,
+        "power": 0.9866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 2,
+          "rS": 4
+        },
+        "seed": 200002,
+        "power": 0.9766666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "rS": 3
+        },
+        "seed": 200000,
+        "power": 0.9866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "rS": 3
+        },
+        "seed": 200001,
+        "power": 0.9866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "rS": 3
+        },
+        "seed": 200002,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "rS": 4
+        },
+        "seed": 200000,
+        "power": 0.9866666666666667,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "rS": 4
+        },
+        "seed": 200001,
+        "power": 0.9933333333333333,
+        "error": null
+      },
+      {
+        "knobs": {
+          "k": 3,
+          "rS": 4
+        },
+        "seed": 200002,
+        "power": 0.9933333333333333,
+        "error": null
+      }
+    ],
+    "seconds": 0.9478462080005556
+  }
+]
