@@ -146,3 +146,39 @@ def test_integration_matches_a_dense_grid(corpus, label, lapse, sd) -> None:
     grid = -sum(logsumexp((row * lp + (1 - row) * l1).sum(1) + prior) + math.log(u[1] - u[0])
                 for row in c.subject_correct)
     assert fitting.subject_nll(p, c, lapse, sd) == pytest.approx(grid, abs=1e-5 * c.n_subj)
+
+
+def test_evaluate_scores_the_population_mean_accuracy(corpus) -> None:
+    # the human accuracy is a mean over people, so under the random-ability
+    # objective SSE is against the population-mean prediction, not a
+    # median-ability person's (which is further from 0.5)
+    conds = corpus[:3]
+    params = {**PARAMS, "lapse": 0.05, "ability_sd": 1.5}
+    ev = fitting.evaluate(models.uncfam, params, conds, "subject")
+    weights = np.array([c.n_subj for c in conds], dtype=float)
+    sses = []
+    for c, perf in zip(conds, ev.per_condition_perf):
+        m = models.uncfam(params, c.positional_trials, len(c.words), len(c.objects))
+        p = predict_accuracy(m, c)
+        k = fitting.n_choices_per_item(c)
+        direct = np.array([
+            integrate.quad(lambda u, pi=pi: expit(logit(pi) + u) * norm.pdf(u, scale=1.5), -15, 15)[0] for pi in p
+        ])
+        assert perf == pytest.approx(0.95 * direct + 0.05 / k, abs=1e-8)
+        assert perf == pytest.approx(fitting.population_accuracy(models.uncfam, params, c), abs=1e-14)
+        median_person = 0.95 * p + 0.05 / k
+        assert np.abs(perf - median_person).max() > 0.01
+        sses.append(float(((perf - c.accuracy) ** 2).sum()))
+    assert ev.per_condition_sse == pytest.approx(sses, rel=1e-12)
+    assert ev.weighted_sse == pytest.approx(float((np.array(sses) * weights).sum() / weights.sum()), rel=1e-12)
+
+
+def test_evaluate_without_spread_scores_the_lapse_mixed_accuracy(corpus) -> None:
+    c = corpus[0]
+    m = models.uncfam(PARAMS, c.positional_trials, len(c.words), len(c.objects))
+    expected = 0.95 * predict_accuracy(m, c) + 0.05 / fitting.n_choices_per_item(c)
+    no_spread = fitting.evaluate(models.uncfam, {**PARAMS, "lapse": 0.05, "ability_sd": 0.0}, [c], "subject")
+    assert no_spread.per_condition_perf[0] == pytest.approx(expected, abs=1e-14)
+    # the spread belongs to the subject objective only
+    binomial = fitting.evaluate(models.uncfam, {**PARAMS, "lapse": 0.05, "ability_sd": 1.5}, [c], "binomial")
+    assert binomial.per_condition_perf[0] == pytest.approx(expected, abs=1e-14)

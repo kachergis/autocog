@@ -223,8 +223,15 @@ def n_choices_per_item(condition: Condition) -> np.ndarray:
 def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Condition],
              objective: str = "binomial") -> Evaluation:
     """NLL under `objective` (and, for reference, the other objectives), plus
-    per-item accuracy and SSE with the guessing rate mixed in
-    ((1 - lapse) * p + lapse / n_choices), i.e. the accuracy the likelihood scores."""
+    per-item predicted accuracy and its SSE against the human mean accuracy.
+
+    The prediction is the mean accuracy the likelihood implies: the theory's
+    P(correct) with the guessing rate mixed in ((1 - lapse) * p + lapse /
+    n_choices) and, under the random-ability objective with `ability_sd` > 0,
+    averaged over the population's abilities (as `population_accuracy`). The
+    unaveraged value is a median-ability person's accuracy, which is not what
+    a human mean estimates.
+    """
     nlls, sses, perfs = [], [], []
     others = {o: 0.0 for o in DIAGNOSTIC_OBJECTIVES if o != objective}
     d = params.get("ch_dec")
@@ -232,7 +239,8 @@ def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Co
     ability_sd = params.get(ABILITY_SD, 0.0)
     for c in conditions:
         m = learner(params, c.positional_trials, len(c.words), len(c.objects))
-        perf = (1 - lapse) * predict_accuracy(m, c, d=d) + lapse / n_choices_per_item(c)
+        perf = _mean_accuracy(predict_accuracy(m, c, d=d), lapse, n_choices_per_item(c),
+                              ability_sd if objective == "subject" else 0.0)
         perfs.append(perf)
         nlls.append(condition_nll(m, c, d, lapse, objective, ability_sd))
         for o in others:
@@ -254,6 +262,19 @@ def evaluate(learner: Learner, params: dict[str, float], conditions: Sequence[Co
 _GH40_NODES, _GH40_WEIGHTS = np.polynomial.hermite.hermgauss(40)
 
 
+def _mean_accuracy(p: np.ndarray, lapse: float, k: np.ndarray, ability_sd: float) -> np.ndarray:
+    """Mean over people of (1 - lapse) * logistic(logit p + u) + lapse / k, u ~
+    N(0, ability_sd^2) (40-node Gauss-Hermite; the integrand is smooth). With
+    ability_sd <= 0 everyone is the same and it is (1 - lapse) * p + lapse / k."""
+    if ability_sd <= 0:
+        return (1 - lapse) * p + lapse / k
+    pc = np.clip(p, _P_CLIP, 1 - _P_CLIP)
+    eta = np.log(pc) - np.log1p(-pc)
+    u = np.sqrt(2.0) * ability_sd * _GH40_NODES
+    mean_q = (_GH40_WEIGHTS[:, None] / np.sqrt(np.pi) / (1.0 + np.exp(-(eta[None, :] + u[:, None])))).sum(axis=0)
+    return (1 - lapse) * mean_q + lapse / k
+
+
 def population_accuracy(learner: Learner, params: dict[str, float], condition: Condition) -> np.ndarray:
     """Predicted mean accuracy per item across people.
 
@@ -265,16 +286,7 @@ def population_accuracy(learner: Learner, params: dict[str, float], condition: C
     """
     m = learner(params, condition.positional_trials, len(condition.words), len(condition.objects))
     p = predict_accuracy(m, condition, d=params.get("ch_dec"))
-    lapse = params.get(LAPSE, 0.0)
-    k = n_choices_per_item(condition)
-    sd = params.get(ABILITY_SD, 0.0)
-    if sd <= 0:
-        return (1 - lapse) * p + lapse / k
-    pc = np.clip(p, _P_CLIP, 1 - _P_CLIP)
-    eta = np.log(pc) - np.log1p(-pc)
-    u = np.sqrt(2.0) * sd * _GH40_NODES
-    mean_q = (_GH40_WEIGHTS[:, None] / np.sqrt(np.pi) / (1.0 + np.exp(-(eta[None, :] + u[:, None])))).sum(axis=0)
-    return (1 - lapse) * mean_q + lapse / k
+    return _mean_accuracy(p, params.get(LAPSE, 0.0), n_choices_per_item(condition), params.get(ABILITY_SD, 0.0))
 
 
 @dataclass
@@ -472,10 +484,50 @@ class CVResult:
     fold_params: list[dict[str, float]]
 
 
-def cv_folds(n: int, k: int, seed: int) -> list[np.ndarray]:
-    """The k folds of condition indices. Same (n, k, seed) -> same folds, so
-    every theory is cross-validated on an identical split. At most n folds."""
-    return np.array_split(np.random.default_rng(seed).permutation(n), min(k, n))
+def experiment_family(label: str) -> str:
+    """The experiment family of a corpus condition, for grouped CV.
+
+    Conditions of one family are near-replicates of each other (the same
+    design with one factor varied), so holding out one while training on its
+    siblings is a weak test. Families: the 12 filtering conditions (`filt*`),
+    the frequency x contextual-diversity set (`freq369*` and the two `*_x8_*`
+    3/9 and 3/6/9 schedules), and the temporal-contiguity reorderings of the
+    4x4 design. Every other condition (the 2xx/301 designs, `cont_div6-12`) is
+    its own family.
+    """
+    if label.startswith("filt"):
+        return "filt"
+    if label.startswith("freq369") or "_x8_" in label:
+        return "freq369"
+    if "temp" in label or "olap" in label or label.endswith("_tc"):
+        return "temporal_contiguity"
+    return label
+
+
+def cv_folds(n: int, k: int, seed: int, groups: Sequence[str] | None = None) -> list[np.ndarray]:
+    """The k folds of condition indices. Same (n, k, seed, groups) -> same
+    folds, so every theory is cross-validated on an identical split. At most
+    n folds (or, with `groups`, as many as there are groups).
+
+    `groups` (one label per condition, e.g. `experiment_family` of each)
+    keeps every group whole within one fold: groups are shuffled, then placed
+    largest first into the currently smallest fold.
+    """
+    rng = np.random.default_rng(seed)
+    if groups is None:
+        return np.array_split(rng.permutation(n), min(k, n))
+    if len(groups) != n:
+        raise ValueError(f"groups has {len(groups)} labels for {n} conditions")
+    members: dict[str, list[int]] = {}
+    for i, g in enumerate(groups):
+        members.setdefault(g, []).append(i)
+    names = list(members)
+    order = [names[j] for j in rng.permutation(len(names))]
+    order.sort(key=lambda g: -len(members[g]))  # stable: ties keep the shuffled order
+    folds: list[list[int]] = [[] for _ in range(min(k, len(names)))]
+    for g in order:
+        min(folds, key=len).extend(members[g])
+    return [np.array(sorted(f)) for f in folds]
 
 
 def _fit_fold(learner: Learner, free, fixed, conditions, held, budget, fit_lapse, x0=None, theory_dump=None):
@@ -516,12 +568,14 @@ def cross_validate(
     seed: int = 0,
     budget: FitBudget = FitBudget(),
     fit_lapse: bool = True,
+    groups: Sequence[str] | None = None,
 ) -> CVResult:
-    """Fit on k-1 folds of conditions, score the held-out fold; repeat for every fold."""
+    """Fit on k-1 folds of conditions, score the held-out fold; repeat for every
+    fold. `groups` keeps each group of conditions within one fold (see `cv_folds`)."""
     conditions = list(conditions)
     return _assemble_cv(conditions, [
         _fit_fold(learner, free, fixed, conditions, held, budget, fit_lapse)
-        for held in cv_folds(len(conditions), k, seed)
+        for held in cv_folds(len(conditions), k, seed, groups)
     ])
 
 
@@ -544,16 +598,20 @@ def cross_validate_theory(
     budget: FitBudget = FitBudget(),
     workers: int = 1,
     x0: dict[str, float] | None = None,
+    groups: Sequence[str] | None = None,
 ) -> CVResult:
     """`cross_validate` for an `XSLTheory`.
 
     Parallelism is either across folds (`workers` processes, one fold each)
     or, when `budget.workers > 1`, within each fit (folds then run one after
     another, each fit scoring its populations in `budget.workers` processes).
-    `x0` (e.g. the full-corpus fit) warm-starts every fold.
+    `x0` (e.g. the full-corpus fit) warm-starts every fold; that fit has seen
+    the held-out conditions, so leave it out for an unbiased held-out score.
+    `groups` (e.g. `[experiment_family(c.label) for c in conditions]`) keeps
+    each group within one fold.
     """
     conditions = list(conditions)
-    folds = cv_folds(len(conditions), k, seed)
+    folds = cv_folds(len(conditions), k, seed, groups)
     dump = theory.model_dump()
     if workers <= 1 or budget.workers > 1:
         return _assemble_cv(conditions, [

@@ -292,3 +292,34 @@ def test_robust_refit_parses_bound_overrides() -> None:
         "xsl_09": {"s": "[0.01, 4]", "kc": "[0, 40]"}, "inc_fazly": {"beta": "[2, 5e4]"}}
     with pytest.raises(ValueError):
         script.parse_bounds(["xsl_09 s [0, 1]"])
+
+
+def test_grouped_folds_keep_experiment_families_whole(corpus) -> None:
+    groups = [fitting.experiment_family(c.label) for c in corpus]
+    assert sum(g == "filt" for g in groups) == 12
+    assert sum(g == "freq369" for g in groups) == 6
+    assert sum(g == "temporal_contiguity" for g in groups) == 5
+    assert len(set(groups)) == 3 + 24  # every other condition is its own family
+    folds = fitting.cv_folds(len(corpus), 5, 0, groups)
+    assert sorted(np.concatenate(folds).tolist()) == list(range(len(corpus)))
+    fold_of = {i: f for f, fold in enumerate(folds) for i in fold}
+    for g in ("filt", "freq369", "temporal_contiguity"):
+        assert len({fold_of[i] for i, gi in enumerate(groups) if gi == g}) == 1
+    assert sorted(map(len, folds)) == [8, 9, 9, 9, 12]  # as balanced as a 12-condition family allows
+    assert all(np.array_equal(a, b) for a, b in zip(folds, fitting.cv_folds(len(corpus), 5, 0, groups)))
+    # without groups the split is the plain shuffled one, unchanged
+    plain = fitting.cv_folds(len(corpus), 5, 0)
+    assert all(np.array_equal(a, b) for a, b in
+               zip(plain, np.array_split(np.random.default_rng(0).permutation(len(corpus)), 5)))
+    with pytest.raises(ValueError, match="groups has"):
+        fitting.cv_folds(len(corpus), 5, 0, groups[:-1])
+
+
+def test_grouped_cv_scores_every_condition_once(corpus) -> None:
+    conds = corpus[20:28]  # three single-condition families and five filtering conditions
+    groups = [fitting.experiment_family(c.label) for c in conds]
+    cv = fitting.cross_validate(models.baseline, {}, conds, k=3, fixed={"lapse": 0.3}, fit_lapse=False,
+                                groups=groups)
+    ev = fitting.evaluate(models.baseline, {"lapse": 0.3}, conds)
+    assert cv.heldout_nll == pytest.approx(ev.nll, rel=1e-12)
+    assert len(cv.fold_params) == 3
