@@ -1,6 +1,6 @@
 # Offline AutoCog for cross-situational word learning: summary
 
-*2026-10-20. Full report: [`xsl_mode_b_report.md`](xsl_mode_b_report.md); design:
+*2026-10-20; revised 2026-11-16 after scoring checks. Full report: [`xsl_mode_b_report.md`](xsl_mode_b_report.md); design:
 [`xsl_offline_proposal.md`](xsl_offline_proposal.md); branch `xsl-offline-phase0`.*
 
 ## What was done
@@ -50,11 +50,22 @@ LLM cost was about $8.4 in logged tokens. Everything else ran locally.
 ## Overall results
 
 1. **Generated theories out-predict every incumbent.**
-   - The leader, `xsl_14` (17 parameters), reaches held-out NLL 16,880.2,
-     against 17,135.1 for kachergis and 17,153.6 for fazly.
-   - It also has the lowest held-out weighted SSE (.400; fazly .504).
-   - All 12 generated theories on the final leaderboard rank above all six
-     incumbents.
+   - The leaderboard's first theory, `xsl_14` (17 parameters), reaches
+     held-out NLL 16,880.2, against 17,135.1 for kachergis and 17,153.6 for
+     fazly.
+   - It also has the lowest held-out weighted SSE (.363; fazly .505,
+     kachergis .564).
+   - All 12 generated theories refitted under the final objective
+     (`xsl_03`–`14`) rank above all six incumbents.
+   - **This lead survived three scoring checks**: cold-started folds, folds
+     that hold out whole experiments, and a bootstrap over conditions (95%
+     interval −381 to −139 against kachergis). `xsl_14` stays at least 205
+     NLL ahead of both incumbents.
+   - **The order at the top did not survive.** `xsl_14` leads `xsl_09` by
+     42 on the leaderboard, by 15 with cold starts, and trails it by 25 when
+     whole experiments are held out. `xsl_09`–`14` are a tied cluster, so the
+     later steps (exposure scaling, the debate revisions) are not
+     established improvements.
    - They form one lineage built on `xsl_01`: mutual-responsibility credit,
      interference instead of global decay, test-time competition for
      objects, contiguity, commitment with redistributed credit (`xsl_09`, the
@@ -74,6 +85,11 @@ LLM cost was about $8.4 in logged tokens. Everything else ran locally.
    - Fazly wins every query on repetition. In the filtering experiments
      people gain about .17 from late repetitions, regardless of earlier
      exposures. `xsl_14` predicts about .04.
+   - Two qualifications. The advocates saw the human data when choosing
+     queries, so each side winning its own is expected. And fazly's match
+     depends on having been fitted to other filtering conditions: with that
+     experiment held out whole, fazly predicts it worst of the four theories
+     tested.
    - Under the stricter gate, none of 9 revisions fixed this. Those that
      moved the query most cost 31–34 held-out NLL. Within this lineage,
      fitting the repetition effect costs fit elsewhere.
@@ -97,9 +113,17 @@ LLM cost was about $8.4 in logged tokens. Everything else ran locally.
      asked for.
    - The designer's rationales are sometimes wrong in sign, so only computed
      predictions should be trusted.
+   - Cross-validation folds were warm-started from the full-corpus fit and
+     split sibling conditions across folds. Both flattered some scores, and
+     a metric (weighted SSE) was computed against the wrong prediction until
+     a review caught it.
 
 ## Obvious next steps
 
+0. **Settle the top of the leaderboard.** Rerun `xsl_09`–`14` with cold
+   starts at a larger fitting budget, on folds grouped by experiment, with
+   several fold seeds. Make that the default accept gate, and report
+   intervals on NLL differences.
 1. **Run the three strongest designs on people.**
    - Export the trial-order, mutual-exclusivity and retroactive-reappearance
      designs to a jsPsych timeline.

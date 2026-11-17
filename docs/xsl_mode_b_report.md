@@ -1,6 +1,6 @@
 # Offline AutoCog for cross-situational word learning: progress report
 
-Status: **draft, 2026-10-19.** It covers everything done so far: Phase 0, the
+Status: **draft, 2026-10-19; scoring checks added 2026-11-16.** It covers everything done so far: Phase 0, the
 data bridge; Phase 1, theory generation in mode B (the full corpus visible);
 re-evaluation under three objectives; Phase 2, a debate between the best
 generated theory and the best incumbent; and a first Phase 3 run of
@@ -22,9 +22,16 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
   per-subject random-ability likelihood, the best theory is `xsl_14`
   (17 parameters). It predicts held-out conditions 255 NLL better than the
   best incumbent, kachergis (16,880.2 vs 17,135.1), and 273 better than fazly
-  (17,153.6). It also has the lowest held-out weighted SSE (0.400; fazly
-  0.504). All twelve generated theories in the table rank above all six
-  incumbents.
+  (17,153.6). It also has the lowest held-out weighted SSE (0.363; fazly
+  0.505). All twelve generated theories refitted under this objective
+  (`xsl_03`–`14`) rank above all six incumbents.
+- **Scoring checks (2026-11-16) confirm the lead over the incumbents but
+  not the order at the top.** With cold-started folds, and with folds that
+  hold out whole experiments, `xsl_14` stays at least 205 NLL ahead of
+  kachergis and fazly. Its lead over `xsl_09` shrinks from 42 to 15 and then
+  reverses (−25), so `xsl_09`–`14` are best read as a tied cluster. The
+  weighted SSE had been computed against a median-ability person and is now
+  corrected. See *Scoring checks*.
 - **One lineage.** Every leading theory descends from `xsl_01`. The lineage
   adds mutual-responsibility credit and interference instead of global
   forgetting (`xsl_01`), test-time claim competition (`xsl_04`), contiguity
@@ -101,6 +108,7 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 | 10-18/19 | **Query gate** (`--gate nll_and_query`) and gated rounds 4–6: nothing accepted. | `0b35b8a6`, `db8214f3` |
 | 10-19 | **Phase 3, prospective designs** (`xsl_14` vs fazly): an LLM-written design generator, a power simulation at N = 50 and a frozen queue. 3 designs accepted from 4 proposals. | `767303cb` |
 | 10-19 | Phase 3 for kachergis vs fazly and for `xsl_14` vs kachergis: 3 designs accepted from 3 proposals in each. | `e49ec54c` |
+| 11-16 | **Scoring checks**: wSSE corrected to the population-mean prediction; cold-start and grouped-by-experiment CV for four theories. | `8740f84e`, `f01705b1` |
 
 | run | what | directory |
 |---|---|---|
@@ -139,35 +147,39 @@ overfitting, or folds landing in different optima.
 
 | rank | theory | k | held-out NLL | held-out wSSE | gap | at a bound |
 |---|---|---|---|---|---|---|
-| 1 | `xsl_14` competition-scaled returns + pair-count commitment gain | 17 | **16,880.2** | **0.400** | +34 | `lam`, `xi` |
-| 2 | `xsl_13` commitment-protected, consistency-scaled exclusion | 18 | 16,886.6 | 0.411 | +36 | `lam`, `xi`, `kappa`, `pg` |
-| 3 | `xsl_12` commitment-gated exclusion + exposure scaling | 16 | 16,905.5 | 0.436 | +51 | `lam`, `xi` |
-| 4 | `xsl_11` + count-based familiarity at test | 16 | 16,913.6 | 0.431 | +53 | `lam`, `Mmax`, `xi` |
-| 5 | `xsl_09` commitment-gated claim exclusion | 15 | 16,921.7 | 0.433 | +59 | `lam`, `Mmax`, `xi` |
-| 6 | `xsl_10` (= `xsl_09` once its pinned values are freed) | 15 | 16,922.0 | 0.433 | +59 | `lam`, `Mmax`, `xi` |
-| 7 | `xsl_04` interference + test-time claim competition | 9 | 16,991.3 | 0.494 | +44 | `Mmax` |
-| 8 | `xsl_05` + repetition boost | 10 | 16,995.9 | 0.497 | +34 | |
-| 9 | `xsl_06` + consolidation protection | 11 | 16,998.6 | 0.493 | +33 | |
-| 10 | `xsl_03` load-scaled absent-alternative interference | 7 | 17,050.6 | 0.546 | +38 | `q`, `ch_dec` |
-| 11 | `xsl_08` decaying-trace contiguity interference | 13 | 17,061.6 | 0.509 | +115 | `q` |
-| 12 | `xsl_07` soft-sharpness interference + contiguity | 11 | 17,065.7 | 0.517 | +130 | `b` |
-| 13 | kachergis (Kachergis, Yu & Shiffrin 2012) | 5 | 17,135.1 | 0.689 | +34 | |
-| 14 | fazly (Fazly, Alishahi & Stevenson 2010) | 4 | 17,153.6 | 0.504 | +24 | |
-| 15 | uncfam_attention ‡ | 5 | 17,170.3 | 0.696 | +70 | |
-| 16 | uncfam_gamma | 6 | 17,177.2 | 0.707 | +102 | |
-| 17 | tilles (Tilles & Fontanari 2012) ‡ | 5 | 17,357.2 | 0.700 | +44 | |
-| 18 | Bayesian_decay ‡ | 5 | 17,657.3 | 0.861 | +54 | `ch_dec` |
-| 19 | co-occurrence baseline ‡ | 2 | 19,568.7 | 1.374 | +133 | |
+| 1 | `xsl_14` competition-scaled returns + pair-count commitment gain | 17 | **16,880.2** | **0.363** | +34 | `lam`, `xi` |
+| 2 | `xsl_13` commitment-protected, consistency-scaled exclusion | 18 | 16,886.6 | 0.373 | +36 | `lam`, `xi`, `kappa`, `pg` |
+| 3 | `xsl_12` commitment-gated exclusion + exposure scaling | 16 | 16,905.5 | 0.388 | +51 | `lam`, `xi` |
+| 4 | `xsl_11` + count-based familiarity at test | 16 | 16,913.6 | 0.390 | +53 | `lam`, `Mmax`, `xi` |
+| 5 | `xsl_09` commitment-gated claim exclusion | 15 | 16,921.7 | 0.394 | +59 | `lam`, `Mmax`, `xi` |
+| 6 | `xsl_10` (= `xsl_09` once its pinned values are freed) | 15 | 16,922.0 | 0.394 | +59 | `lam`, `Mmax`, `xi` |
+| 7 | `xsl_04` interference + test-time claim competition | 9 | 16,991.3 | 0.450 | +44 | `Mmax` |
+| 8 | `xsl_05` + repetition boost | 10 | 16,995.9 | 0.449 | +34 | |
+| 9 | `xsl_06` + consolidation protection | 11 | 16,998.6 | 0.446 | +33 | |
+| 10 | `xsl_03` load-scaled absent-alternative interference | 7 | 17,050.6 | 0.483 | +38 | `q`, `ch_dec` |
+| 11 | `xsl_08` decaying-trace contiguity interference | 13 | 17,061.6 | 0.464 | +115 | `q` |
+| 12 | `xsl_07` soft-sharpness interference + contiguity | 11 | 17,065.7 | 0.471 | +130 | `b` |
+| 13 | kachergis (Kachergis, Yu & Shiffrin 2012) | 5 | 17,135.1 | 0.564 | +34 | |
+| 14 | fazly (Fazly, Alishahi & Stevenson 2010) | 4 | 17,153.6 | 0.505 | +24 | |
+| 15 | uncfam_attention ‡ | 5 | 17,170.3 | 0.564 | +70 | |
+| 16 | uncfam_gamma | 6 | 17,177.2 | 0.587 | +102 | |
+| 17 | tilles (Tilles & Fontanari 2012) ‡ | 5 | 17,357.2 | 0.651 | +44 | |
+| 18 | Bayesian_decay ‡ | 5 | 17,657.3 | 0.714 | +54 | `ch_dec` |
+| 19 | co-occurrence baseline ‡ | 2 | 19,568.7 | 1.185 | +133 | |
 
 ‡ Standard fit, not a robust multi-start refit. Every theory except the
 baseline fits `lapse` to its .001 floor (baseline: .35), so it is not listed
-under "at a bound". `ability_sd` is 1.43–1.59 for every theory.
+under "at a bound". `ability_sd` is 1.43–1.59 for every theory. The wSSE column compares the
+population-mean prediction with human mean accuracy (corrected 2026-11-16;
+earlier versions of this report used a median-ability person's accuracy,
+which gave 0.400 for `xsl_14`, 0.504 for fazly and 0.689 for kachergis).
 
-- **Two criteria, one winner.** Among incumbents, kachergis is best by
-  held-out NLL but nearly worst by held-out wSSE, and fazly is the reverse.
-  The random-ability likelihood scores how each person's responses hang
-  together, not just mean item accuracy. The generated theories from
-  `xsl_09` on lead on both criteria.
+- **Two criteria, one winner.** Among incumbents, kachergis is ahead of
+  fazly on held-out NLL (by 18, within noise) and behind it on held-out wSSE
+  (0.564 vs 0.505). An earlier version of this report made much more of this
+  disagreement; two thirds of the wSSE gap came from the scoring error
+  described above. The generated theories from `xsl_09` on lead on both
+  criteria.
 - **Over-parameterised.** The commitment-gated family fits `lam` and `xi` at
   their upper bounds in every version, and `Mmax` too through `xsl_11`.
   Its predictions are validated, but its parameter estimates are not
@@ -177,6 +189,53 @@ under "at a bound". `ability_sd` is 1.43–1.59 for every theory.
   xsl-bakeoff SSE fit. uncfam_gamma's familiarity exponent flips from .69 to
   1.44. kachergis settles at B ≈ 5, between the two optima it alternated
   between under the binomial.
+
+## Scoring checks (2026-11-16)
+
+A review of the scoring raised three concerns. Each was tested on `xsl_14`,
+`xsl_09`, kachergis and fazly; tables and code are in
+[`results/xsl/cv_checks/`](../results/xsl/cv_checks/).
+
+1. **Weighted SSE.** Under the random-ability objective it compared the
+   accuracy of a median-ability person with the human mean. It now uses the
+   population-mean prediction, recomputed for all 19 theories from stored
+   parameters. The leaderboard order (held-out NLL) is unaffected.
+2. **Warm-started folds.** Every CV fold had been started from the
+   full-corpus fit, which has seen the held-out conditions.
+3. **Non-independent folds.** The 12 filtering conditions and the freq369
+   variants were spread over all five folds, so each was predicted from fits
+   that saw its siblings.
+
+| held-out NLL | warm start, random folds (leaderboard) | cold start, random folds | cold start, folds grouped by experiment |
+|---|---|---|---|
+| `xsl_14` | 16,880.2 | 16,914.6 | 17,008.5 |
+| `xsl_09` | 16,921.7 | 16,929.9 | 16,983.3 |
+| kachergis | 17,135.1 | 17,167.9 | 17,213.7 |
+| fazly | 17,153.6 | 17,153.8 | 17,419.6 |
+
+- **The lead over the incumbents holds.** `xsl_14` is at least 205 NLL ahead
+  of both in every variant. A bootstrap over conditions on the leaderboard
+  scores gives 95% intervals of −381 to −139 against kachergis and −393 to
+  −166 against fazly.
+- **The order inside the top cluster does not hold.** `xsl_14` leads
+  `xsl_09` by 42 on the leaderboard, by 15 with cold starts, and trails it
+  by 25 under grouped folds. On the leaderboard it leads `xsl_13` by 6.5
+  (bootstrap interval −16 to +4). The exposure-scaling step and the two
+  debate revisions are therefore not established improvements.
+- **Warm starts did inflate scores.** Kachergis's leaderboard value was
+  optimistic by about 30: in one fold the cold fit found a better training
+  optimum that predicts worse. For `xsl_14` the +34 is an upper bound,
+  because its cold fits stopped 32 NLL short of the warm training optimum.
+  The cold budget is too small for 15–17 parameters.
+- **Fazly's fit to the filtering experiment depended on sibling
+  conditions.** With that experiment held out whole it loses 266 NLL, almost
+  all of it there (4,571 against 4,212–4,295 for the other three). The
+  Phase 2 finding that fazly matches the late-repetition gain holds for a
+  fazly fitted to other filtering conditions. Kachergis then leads fazly by
+  206; with cold random folds fazly leads by 14. Their order is not settled.
+- **Limits of these checks.** One fold seed and one grouping; the
+  12-condition filtering fold dominates the grouped score; only four
+  theories were refitted.
 
 ## How the theories evolved
 
@@ -325,8 +384,8 @@ filtering designs and the mixed-frequency 4×4 conditions.
 | 5 | query | 3 (16,886.0–16,911.5) | none passed: best query move 1.9 → 1.4 SE, at +31 NLL |
 | 6 | query | 3 (16,889.7–16,914.7) | none passed: best query move 3.1 → 2.5 SE, at +34 NLL |
 
-The accepted revisions improved overall prediction (−25 held-out NLL; wSSE
-0.436 → 0.400) but barely moved the queries fazly won (−4.4 → −4.1 SE). In
+The accepted revisions improved the leaderboard score (−25 held-out NLL; wSSE
+0.388 → 0.363; but see *Scoring checks*: the gain is not robust) but barely moved the queries fazly won (−4.4 → −4.1 SE). In
 round 4, every gated candidate predicted the same late-repetition gain as
 `xsl_14` once fitted (.041–.043, against people's .177). The mechanisms
 were in the code, and the fit switched them off. In rounds 5–6 the
@@ -557,8 +616,15 @@ strongest candidates for a first human run.
   held-out results on a fixed split every round, so the split itself may be
   overfit. The sealed holdouts are the guard and have not been used.
 - **Unpenalised degrees of freedom.** Learners carry hard-coded constants
-  the LLM chose after seeing the data. Constants that copy fitted values are
+  the LLM chose after seeing the data (about a dozen in `xsl_14`). Constants that copy fitted values are
   now refitted, but other choices are not counted in k.
+- **Cross-validation.** Leaderboard folds are warm-started from the
+  full-corpus fit and split near-replicate conditions across folds. The
+  checks above bound the effect for four theories; the other 15 have not
+  been rerun.
+- **Debate queries were chosen with the human data visible**, so each side
+  winning its own query is close to guaranteed, and the 2-SE test ignores
+  uncertainty in the predictions.
 - **Fit instability.** Separate optima make differences of about 100 NLL
   fragile. Three incumbents and the baseline (‡) have standard, not robust,
   fits under random ability.
@@ -591,6 +657,10 @@ the run resumed from its saved state.
 
 ## Next steps
 
+0. **Settle the top of the leaderboard.** Rerun `xsl_09`–`14` with cold
+   starts at the robust-refit budget, on grouped folds, with several fold
+   seeds. Make grouped, cold-started CV the default gate, and report
+   bootstrap intervals on NLL differences.
 1. **A structurally different theory for repetition.** The gated debate
    shows that patching the commitment-gated family does not produce "late
    repetitions help, early exposures don't hurt". Seed generation from fazly,
