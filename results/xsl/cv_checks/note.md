@@ -4,9 +4,11 @@ Tables are in [comparison.md](comparison.md). Four theories were refitted (xsl_1
 kachergis, inc_fazly); the other 15 only have the wSSE recomputation.
 
 **Short answer.** The generated theories' lead over the incumbents holds in every variant
-(at least 205 NLL). The order inside the top cluster does not: xsl_14 vs xsl_09 is within
-optimiser and split noise, and reverses under grouped folds. The order of the two incumbents
-also depends on the variant.
+(at least 205 NLL). The order inside the top cluster (xsl_09 to xsl_14) does not: a
+larger-budget rerun ([../cv_checks_robust/comparison.md](../cv_checks_robust/comparison.md),
+see the last section) puts all five within 30 NLL under every split, and their order changes
+with the split and the optimiser budget. The order of the two incumbents also depends on the
+variant.
 
 | held-out NLL | warm, random folds (stored) | cold, random folds | cold, grouped folds |
 |---|---|---|---|
@@ -50,9 +52,8 @@ also depends on the variant.
 - inc_fazly's loss is almost entirely the filtering family (4570.7, against 4212-4295 for the
   others): its fit to the `filt*` conditions depended on having other `filt*` conditions in
   training. On the freq369 family fazly is the best of the four.
-- xsl_09 now beats xsl_14 by 25.2 (it is better on filt and freq369; the two are equal on
-  temporal contiguity and on the single-condition families, where xsl_14 leads by 5). xsl_14's
-  extra parameters over xsl_09 do not generalise across families at this fitting budget.
+- At this budget xsl_09 beats xsl_14 by 25.2, but that does not survive the larger-budget
+  rerun (below), where xsl_14 is 1.9 ahead.
 - Gaps to xsl_14: kachergis 253 -> 205, fazly 239 -> 411. kachergis is clearly ahead of fazly
   (206 NLL), the reverse of the cold random-fold order.
 
@@ -61,8 +62,37 @@ also depends on the variant.
 - One fold seed and one grouped split; the 12-condition filt fold dominates the grouped score.
 - The cold budget (popsize 10, maxiter 40, 2 restarts) is too small for the 15-17 parameter
   theories to reach the warm training NLL reliably, so differences of 10-35 NLL among xsl_NN
-  theories are not interpretable here. A cold run of xsl_14 (and xsl_13/12/11) with the
-  robust-refit budget would settle whether xsl_14 > xsl_09 survives.
+  theories are not interpretable here; see the larger-budget rerun below.
 - `2_x8_39_4x4` and `3_x8_369_4x4` were put in the freq369 family; 2xx conditions are each
   their own family (no sub-experiment grouping).
 - The stored leaderboard files and the docs still show the old wSSE; they were not rewritten.
+
+## 4. Larger-budget cold CV of the top cluster
+
+[../cv_checks_robust/comparison.md](../cv_checks_robust/comparison.md): xsl_14, xsl_13, xsl_12,
+xsl_11 and xsl_09, cold, on both splits, popsize 12, maxiter 60, 2 restarts (the robust-refit
+budget per fold), about 61 CPU-hours in all.
+
+| held-out NLL | warm, random (stored) | cold, random | cold, grouped |
+|---|---|---|---|
+| xsl_14 | 16880.2 | 16908.1 | 17000.7 |
+| xsl_13 | 16886.6 | 16902.4 | 16993.8 |
+| xsl_12 | 16905.5 | 16906.6 | 16978.4 |
+| xsl_11 | 16913.6 | 16916.2 | 17007.9 |
+| xsl_09 | 16921.7 | 16927.8 | 17002.5 |
+
+- The bigger budget closes half of xsl_14's training shortfall (+31.6 -> +15.6 over the warm
+  fits) and its held-out NLL improves only 6.5 (16914.6 -> 16908.1). The cold - warm held-out
+  gap is now +27.9 for xsl_14 and +15.8 for xsl_13 but only +1 to +6 for xsl_09/11/12. So the
+  warm start flattered the two newest theories most: their 6.5 and 25-41 NLL leads over
+  xsl_12/11/09 on the stored leaderboard are mostly the warm start.
+- Cold, on random folds, the five span 25 NLL and xsl_13 (-5.7) and xsl_12 (-1.4) are ahead of
+  xsl_14. On grouped folds they span 30 NLL and xsl_12 is first (22 ahead of xsl_14), mainly on
+  the filt family; xsl_09 is now 1.9 *behind* xsl_14, where the smaller budget had it 25 ahead,
+  even though its training NLL barely moved (67414 -> 67411). Fold-level optimiser noise of
+  ~20 NLL is the same size as the gaps.
+- Reading: the leaderboard cannot rank xsl_09 through xsl_14 against each other; their
+  differences are within warm-start bias, optimiser noise and split choice. The debate's
+  later revisions (xsl_13, xsl_14) did not produce a measurable held-out gain over xsl_12.
+  Their lead over the incumbents (>= 205 NLL against kachergis, >= 239 against inc_fazly) is not
+  in question.

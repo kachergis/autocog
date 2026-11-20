@@ -211,7 +211,10 @@ def report(args: argparse.Namespace) -> None:
         return f"{b[key]['heldout_nll'] - a[key]['heldout_nll']:+.1f}" if key in a and key in b else "pending"
 
     top = cv_out[args.labels[0]]
-    budget_note = "popsize 10, maxiter 40, 2 restarts, no `x0`"
+    done = sorted((out / "jobs").glob("*.json"))
+    b = json.loads(done[0].read_text())["budget"] if done else None
+    budget_note = (f"popsize {b['popsize']}, maxiter {b['maxiter']}, {b['restarts']} restarts, no `x0`"
+                   if b else "no `x0`")
     L += ["\n## 2. Cold-start CV on the leaderboard's folds\n",
           f"Same 5 folds (`cv_folds(47, 5, seed=0)`), each fold fitted from scratch ({budget_note}). \"warm\" is "
           "the stored leaderboard value, every fold warm-started from the full-corpus fit. Train NLL is summed "
