@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -44,7 +45,7 @@ from src.xsl.debate import (  # noqa: E402
     CorpusQuery, DebateVerdict, QueryGate, QueryOutcome, Side, evaluate_query, ledger_block,
     lost_queries, render_arbitration, render_query,
 )
-from src.xsl.fitting import FitBudget, population_accuracy  # noqa: E402
+from src.xsl.fitting import CV_SCHEMES, DEFAULT_CV_SCHEME, FitBudget, population_accuracy  # noqa: E402
 from src.xsl.generator import XSLTheoryGenerator, lower_heldout_nll, parse_reply  # noqa: E402
 from src.xsl.prompts import OUTPUT_RULES, Entry, Iteration  # noqa: E402
 
@@ -77,6 +78,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--restarts", type=int, default=FitBudget.restarts)
     p.add_argument("--cv_folds", type=int, default=5)
     p.add_argument("--cv_workers", type=int, default=3)
+    p.add_argument("--cv_scheme", choices=CV_SCHEMES, default=DEFAULT_CV_SCHEME,
+                   help="how CV folds are split and started; leaderboard entries scored otherwise are re-scored")
+    p.add_argument("--cv_restarts", type=int, default=2, help="DE runs for each CV fold")
     args = p.parse_args(argv)
     if args.out is None:
         args.out = ROOT / f"results/xsl/debate_{args.a}_vs_{args.b}"
@@ -267,8 +271,13 @@ def main(argv: list[str] | None = None) -> None:
     ledger = [QueryOutcome.from_json(o) for r in state["rounds"] for o in r["outcomes"]]
 
     budget = FitBudget(popsize=args.popsize, maxiter=args.maxiter, objective="subject", restarts=args.restarts)
+    cv_budget = replace(budget, restarts=args.cv_restarts)
+    # every theory the debate shows or gates on must be scored under the gate's scheme
+    runner.ensure_cv(entries, conditions, k=args.cv_folds, budget=cv_budget, workers=args.cv_workers,
+                     scheme=args.cv_scheme, on_done=lambda: runner.save(out, entries))
     gen = XSLTheoryGenerator(llm_client=runner.make_llm_client(args), conditions=conditions, budget=budget,
-                             cv_folds=args.cv_folds, cv_workers=args.cv_workers)
+                             cv_folds=args.cv_folds, cv_workers=args.cv_workers,
+                             cv_scheme=args.cv_scheme, cv_budget=cv_budget)
 
     for _ in range(args.rounds):
         debate_round(gen, state, entries, by_label, conditions, ledger, out,

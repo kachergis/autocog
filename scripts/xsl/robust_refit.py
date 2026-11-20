@@ -10,8 +10,9 @@ of the `--source` run this:
   2. refits it to the full corpus with `--restarts` runs of a larger budget,
      the first warm-started from its existing fit (so it cannot end worse,
      unless bounds or `--lapse_max` changed),
-  3. cross-validates it on the same folds, every fold warm-started from the
-     new full-corpus fit,
+  3. cross-validates it under `--cv_scheme` (default: cold-started folds
+     grouped by experiment family; `warm-random` is the old behaviour, every
+     fold warm-started from the new full-corpus fit),
 
 and writes a leaderboard (`main_xsl_offline` format) plus `comparison.md`
 (before vs after) to `--out`, saving after every theory so a run can resume.
@@ -36,7 +37,9 @@ if str(ROOT) not in sys.path:
 
 import main_xsl_offline as runner  # noqa: E402
 from src.xsl.corpus import load_corpus  # noqa: E402
-from src.xsl.fitting import LAPSE, OBJECTIVES, FitBudget, cross_validate_theory, fit_theory  # noqa: E402
+from src.xsl.fitting import (  # noqa: E402
+    CV_SCHEMES, DEFAULT_CV_SCHEME, LAPSE, OBJECTIVES, FitBudget, cross_validate_scheme, fit_theory,
+)
 from src.xsl.prompts import Entry  # noqa: E402
 from src.xsl.theory import XSLTheory  # noqa: E402
 
@@ -70,6 +73,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--workers", type=int, default=4, help="processes scoring each DE population")
     p.add_argument("--lapse_max", type=float, default=FitBudget.lapse_max)
     p.add_argument("--cv_folds", type=int, default=5)
+    p.add_argument("--cv_scheme", choices=CV_SCHEMES, default=DEFAULT_CV_SCHEME)
     return p.parse_args(argv)
 
 
@@ -125,7 +129,8 @@ def main(argv: list[str] | None = None) -> None:
         fit = fit_theory(theory, conditions, budget=budget, x0=x0)
         print(f"[fit] {label}: NLL {old.fit.nll:.1f} -> {fit.nll:.1f} ({fit.seconds / 60:.0f} min, "
               f"{fit.n_evals} evals) params {fit.params}")
-        cv = cross_validate_theory(theory, conditions, k=args.cv_folds, budget=fold_budget, x0=fit.params)
+        cv = cross_validate_scheme(theory, conditions, args.cv_scheme, full_params=fit.params, k=args.cv_folds,
+                                   budget=fold_budget)
         print(f"[cv] {label}: held-out NLL {old.cv.heldout_nll:.1f} -> {cv.heldout_nll:.1f}, "
               f"wSSE {cv.heldout_weighted_sse:.4f}")
 

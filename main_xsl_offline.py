@@ -5,7 +5,8 @@ theory generator proposes a new XSL theory (prose + `learn` function), every
 candidate is fitted to the XSLmodels corpus by likelihood (by default the
 per-subject random-ability likelihood, which models individual differences;
 --objective binomial / multinomial for item-level counts) and scored by
-5-fold cross-validation over conditions (held-out NLL), and a critic steers
+5-fold cross-validation over conditions (held-out NLL; cold-started folds grouped by experiment
+family unless --cv_scheme says otherwise), and a critic steers
 the next revision. The best candidate of each round joins the leaderboard,
 which starts from the fitted seed theories.
 
@@ -29,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -37,7 +39,8 @@ if str(ROOT) not in sys.path:
 
 from src.xsl.corpus import Condition, load_corpus  # noqa: E402
 from src.xsl.fitting import (  # noqa: E402
-    OBJECTIVES, CVResult, FitBudget, FitResult, cross_validate_theory, evaluate, fit_theory, total_choices,
+    CV_SCHEMES, DEFAULT_CV_SCHEME, OBJECTIVES, UNRECORDED_SCHEME, CVResult, FitBudget, FitResult,
+    cross_validate_scheme, evaluate, fit_theory, total_choices,
 )
 from src.xsl.generator import XSLTheoryGenerator  # noqa: E402
 from src.xsl.prompts import Entry, leaderboard_table  # noqa: E402
@@ -75,12 +78,13 @@ def _entry_json(e: Entry) -> dict:
 
 def _cv_json(cv: CVResult) -> dict:
     return {"heldout_nll": cv.heldout_nll, "heldout_weighted_sse": cv.heldout_weighted_sse,
-            "per_condition_nll": cv.per_condition_nll, "fold_params": cv.fold_params}
+            "per_condition_nll": cv.per_condition_nll, "fold_params": cv.fold_params, "scheme": cv.scheme}
 
 
 def _cv_from_json(d: dict) -> CVResult:
     return CVResult(heldout_nll=d["heldout_nll"], heldout_weighted_sse=d["heldout_weighted_sse"],
-                    per_condition_nll=list(d["per_condition_nll"]), fold_params=d["fold_params"])
+                    per_condition_nll=list(d["per_condition_nll"]), fold_params=d["fold_params"],
+                    scheme=d.get("scheme", UNRECORDED_SCHEME))
 
 
 def _entry_from_json(d: dict, conditions: list[Condition], objective: str) -> Entry:
@@ -184,6 +188,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--cv", action="store_true", help="recompute the CV of every leaderboard theory at the end")
     p.add_argument("--cv_folds", type=int, default=5)
     p.add_argument("--cv_workers", type=int, default=3, help="processes for fitting CV folds in parallel")
+    p.add_argument("--cv_scheme", choices=CV_SCHEMES, default=DEFAULT_CV_SCHEME,
+                   help="how CV folds are split and started; entries scored otherwise are re-scored")
+    p.add_argument("--cv_restarts", type=int, default=2, help="DE runs for each CV fold")
     return p.parse_args(argv)
 
 
@@ -242,13 +249,17 @@ def theories_to_add(args: argparse.Namespace) -> list[tuple[str, XSLTheory]]:
 
 
 def ensure_cv(entries: list[Entry], conditions: list[Condition], *, k: int, budget: FitBudget,
-              workers: int, recompute: bool = False, on_done=None) -> None:
-    """Cross-validate every entry that has no CV yet (or all, with `recompute`);
-    `on_done()` runs after each one (e.g. to save progress)."""
+              workers: int, scheme: str = DEFAULT_CV_SCHEME, recompute: bool = False, on_done=None) -> None:
+    """Cross-validate every entry that has no CV yet, or one scored under
+    another scheme (or all, with `recompute`), so the leaderboard and the
+    accept gate compare like with like; `on_done()` runs after each one
+    (e.g. to save progress). Entries saved before the scheme was recorded
+    count as another scheme."""
     for e in entries:
-        if e.cv is None or recompute:
-            e.cv = cross_validate_theory(e.theory, conditions, k=k, budget=budget, workers=workers)
-            print(f"[cv] {e.label}: held-out NLL {e.cv.heldout_nll:.1f}, wSSE {e.cv.heldout_weighted_sse:.4f}")
+        if e.cv is None or e.cv.scheme != scheme or recompute:
+            e.cv = cross_validate_scheme(e.theory, conditions, scheme, full_params=e.fit.params, k=k,
+                                         budget=budget, workers=workers)
+            print(f"[cv] {e.label} ({scheme}): held-out NLL {e.cv.heldout_nll:.1f}, wSSE {e.cv.heldout_weighted_sse:.4f}")
             if on_done is not None:
                 on_done()
 
@@ -262,14 +273,16 @@ def main(argv: list[str] | None = None) -> None:
     entries = load(run_dir, conditions, args.objective)
     add_theories(entries, theories_to_add(args), conditions, budget)
     save(run_dir, entries)
-    ensure_cv(entries, conditions, k=args.cv_folds, budget=budget, workers=args.cv_workers, recompute=args.cv,
-              on_done=lambda: save(run_dir, entries))
+    cv_budget = replace(budget, restarts=args.cv_restarts)
+    ensure_cv(entries, conditions, k=args.cv_folds, budget=cv_budget, workers=args.cv_workers,
+              scheme=args.cv_scheme, recompute=args.cv, on_done=lambda: save(run_dir, entries))
     print(f"{len(conditions)} conditions, {total_choices(conditions)} choices; leaderboard:\n"
           f"{leaderboard_table(entries)}")
 
     if args.n_rounds > 0:
         generator = XSLTheoryGenerator(llm_client=make_llm_client(args), conditions=conditions, budget=budget,
-                                       cv_folds=args.cv_folds, cv_workers=args.cv_workers)
+                                       cv_folds=args.cv_folds, cv_workers=args.cv_workers,
+                                       cv_scheme=args.cv_scheme, cv_budget=cv_budget)
         first = next_generated_number(entries)
         for n in range(first, first + args.n_rounds):
             label, r = f"xsl_{n:02d}", n - 1

@@ -8,6 +8,11 @@ loop contract:
     conditions, same split for every candidate) is strictly lower than the
     running best's (iteration 0's first valid candidate auto-accepts); a
     caller can pass its own gate (`propose_theory(accept=...)`);
+  * the CV is cold-started and grouped by experiment family by default
+    (`cv_scheme`): warm-starting folds from the full-corpus fit flattered the
+    newest theories by up to ~30 NLL, and random folds predict each condition
+    from fits that saw its near-replicates. A running best scored under
+    another scheme is re-scored before it is compared;
   * a critic's "continue" ends the loop only if the candidate was accepted;
   * the loop returns the running-best accepted candidate.
 
@@ -26,7 +31,9 @@ from pathlib import Path
 from typing import Any
 
 from src.xsl.corpus import Condition
-from src.xsl.fitting import FitBudget, cross_validate_theory, fit_theory, total_choices
+from src.xsl.fitting import (
+    CV_SCHEMES, DEFAULT_CV_SCHEME, CVResult, FitBudget, FitResult, cross_validate_scheme, fit_theory, total_choices,
+)
 from src.xsl.prompts import CritiqueVerdict, Entry, Iteration, render_critique, render_generation
 from src.xsl.theory import XSLTheory
 
@@ -104,7 +111,11 @@ class XSLTheoryGenerator:
         max_seconds_per_pass: float = 2.0,
         cv_folds: int = 5,
         cv_workers: int = 1,
+        cv_scheme: str = DEFAULT_CV_SCHEME,
+        cv_budget: FitBudget | None = None,
     ):
+        if cv_scheme not in CV_SCHEMES:
+            raise ValueError(f"cv_scheme must be one of {CV_SCHEMES}, got {cv_scheme!r}")
         self.llm_client = llm_client
         self.conditions = list(conditions)
         self.budget = budget
@@ -112,6 +123,8 @@ class XSLTheoryGenerator:
         self.max_seconds_per_pass = max_seconds_per_pass
         self.cv_folds = cv_folds
         self.cv_workers = cv_workers
+        self.cv_scheme = cv_scheme
+        self.cv_budget = budget if cv_budget is None else cv_budget  # fold fits (cold folds want restarts)
         self.n_choices = total_choices(self.conditions)
 
     # --- llm ---------------------------------------------------------------------
@@ -148,6 +161,11 @@ class XSLTheoryGenerator:
                 )
         return None, error
 
+    def cross_validate(self, theory: XSLTheory, fit: FitResult) -> CVResult:
+        """The gate's CV of `theory` (fitted to the full corpus as `fit`)."""
+        return cross_validate_scheme(theory, self.conditions, self.cv_scheme, full_params=fit.params,
+                                     k=self.cv_folds, budget=self.cv_budget, workers=self.cv_workers)
+
     # --- loop ------------------------------------------------------------------
 
     def propose_theory(
@@ -165,7 +183,9 @@ class XSLTheoryGenerator:
         With `start` (a fitted, cross-validated theory, e.g. the one a debate
         arbiter wants revised) the loop begins with it as the running best, so
         a candidate is accepted only if it beats it; if none does, the result's
-        best is `start` itself.
+        best is `start` itself. If `start.cv` was scored under another CV
+        scheme it is re-scored first (and `start.cv` updated), so both sides
+        of the comparison use the same folds.
 
         `accept(candidate, running_best)` is the accept gate, called on every
         fitted, cross-validated candidate (`running_best` is None only before
@@ -176,6 +196,11 @@ class XSLTheoryGenerator:
         history: list[Iteration] = []
         best: Iteration | None = None
         if start is not None:
+            if start.cv is None or start.cv.scheme != self.cv_scheme:
+                was = "no CV" if start.cv is None else f"{start.cv.scheme} {start.cv.heldout_nll:.1f}"
+                start.cv = self.cross_validate(start.theory, start.fit)
+                print(f"[xsl generator] re-scored {start.label} under the {self.cv_scheme} CV scheme: "
+                      f"{was} -> {start.cv.heldout_nll:.1f}")
             best = Iteration(candidate=start.theory, fit=start.fit, accepted=True, cv=start.cv)
 
         for crit in range(max_iters):
@@ -204,8 +229,7 @@ class XSLTheoryGenerator:
                 e.fit.params for e in sorted(leaderboard, key=lambda e: e.score)]
             x0 = warm_start(theory, sources)
             fit = fit_theory(theory, self.conditions, budget=self.budget, x0=x0)
-            cv = cross_validate_theory(theory, self.conditions, k=self.cv_folds,
-                                       budget=self.budget, workers=self.cv_workers, x0=fit.params)
+            cv = self.cross_validate(theory, fit)
             it = Iteration(candidate=theory, fit=fit, accepted=False, cv=cv)
             it.accepted = accept(it, best)
             if it.accepted:

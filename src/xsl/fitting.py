@@ -474,6 +474,15 @@ def fit(
     )
 
 
+# How the folds are made and started: "cold" fits each fold from scratch,
+# "warm" seeds it with the full-corpus fit (which has seen the held-out
+# conditions, so its score is optimistic); "grouped" keeps each experiment
+# family (`experiment_family`) in one fold, "random" shuffles conditions.
+CV_SCHEMES = ("cold-grouped", "cold-random", "warm-grouped", "warm-random")
+DEFAULT_CV_SCHEME = "cold-grouped"
+UNRECORDED_SCHEME = "unrecorded"  # results saved before the scheme was recorded
+
+
 @dataclass
 class CVResult:
     """k-fold cross-validation over conditions."""
@@ -482,6 +491,7 @@ class CVResult:
     heldout_weighted_sse: float
     per_condition_nll: list[float]          # in corpus order, each from the fold that held it out
     fold_params: list[dict[str, float]]
+    scheme: str = UNRECORDED_SCHEME         # one of CV_SCHEMES; scores are comparable only within a scheme
 
 
 def experiment_family(label: str) -> str:
@@ -539,7 +549,11 @@ def _fit_fold(learner: Learner, free, fixed, conditions, held, budget, fit_lapse
     return held, result.params, ev.per_condition_nll, ev.per_condition_sse
 
 
-def _assemble_cv(conditions, fold_results) -> CVResult:
+def _scheme(x0, groups) -> str:
+    return f"{'cold' if x0 is None else 'warm'}-{'random' if groups is None else 'grouped'}"
+
+
+def _assemble_cv(conditions, fold_results, scheme: str = UNRECORDED_SCHEME) -> CVResult:
     n = len(conditions)
     per_nll = [math.nan] * n
     per_sse = [math.nan] * n
@@ -555,6 +569,7 @@ def _assemble_cv(conditions, fold_results) -> CVResult:
         heldout_weighted_sse=float((np.array(per_sse) * weights).sum() / weights.sum()),
         per_condition_nll=per_nll,
         fold_params=fold_params,
+        scheme=scheme,
     )
 
 
@@ -576,7 +591,7 @@ def cross_validate(
     return _assemble_cv(conditions, [
         _fit_fold(learner, free, fixed, conditions, held, budget, fit_lapse)
         for held in cv_folds(len(conditions), k, seed, groups)
-    ])
+    ], _scheme(None, groups))
 
 
 def _theory_fold(theory_dump: dict, conditions, held, budget, x0=None):
@@ -618,14 +633,44 @@ def cross_validate_theory(
             _fit_fold(theory.learner(), theory.free_parameters, theory.fixed_parameters,
                       conditions, held, budget, True, x0, dump)
             for held in folds
-        ])
+        ], _scheme(x0, groups))
     from concurrent.futures import ProcessPoolExecutor
 
     n_folds = len(folds)
     with ProcessPoolExecutor(max_workers=min(workers, n_folds)) as pool:
         results = list(pool.map(_theory_fold, [dump] * n_folds, [conditions] * n_folds, folds,
                                 [budget] * n_folds, [x0] * n_folds))
-    return _assemble_cv(conditions, results)
+    return _assemble_cv(conditions, results, _scheme(x0, groups))
+
+
+def family_groups(conditions: Sequence[Condition]) -> list[str]:
+    """`experiment_family` of each condition, for grouped folds."""
+    return [experiment_family(c.label) for c in conditions]
+
+
+def cross_validate_scheme(
+    theory,
+    conditions: Sequence[Condition],
+    scheme: str = DEFAULT_CV_SCHEME,
+    *,
+    full_params: dict[str, float] | None = None,
+    k: int = 5,
+    seed: int = 0,
+    budget: FitBudget = FitBudget(),
+    workers: int = 1,
+) -> CVResult:
+    """`cross_validate_theory` under a named scheme (see `CV_SCHEMES`); a warm
+    scheme starts every fold from `full_params`, the full-corpus fit."""
+    if scheme not in CV_SCHEMES:
+        raise ValueError(f"scheme must be one of {CV_SCHEMES}, got {scheme!r}")
+    start, split = scheme.split("-")
+    if start == "warm" and full_params is None:
+        raise ValueError(f"the {scheme} scheme needs full_params, the full-corpus fit")
+    return cross_validate_theory(
+        theory, conditions, k=k, seed=seed, budget=budget, workers=workers,
+        x0=dict(full_params) if start == "warm" else None,
+        groups=family_groups(conditions) if split == "grouped" else None,
+    )
 
 
 def fit_theory(theory, conditions: Sequence[Condition], *, budget: FitBudget = FitBudget(),

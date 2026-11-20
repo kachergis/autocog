@@ -265,3 +265,60 @@ def test_pinned_copies_of_fitted_parameters_are_refit(leaderboard) -> None:
     assert set(freed.free_parameters) == {"a", "d"} and freed.fixed_parameters == {"c": 3.0}
     same, none = unpin_fitted_names(fitted, board)
     assert none == [] and same is fitted
+
+
+def test_gate_cross_validates_cold_on_grouped_folds(conditions, leaderboard) -> None:
+    gen, _ = _generator(conditions, [json.dumps(COUNTING), critique("continue")])
+    assert gen.cv_scheme == "cold-grouped"
+    result = gen.propose_theory(guide="g", leaderboard=leaderboard, max_iters=1)
+    assert result.best.cv.scheme == "cold-grouped"
+    with pytest.raises(ValueError, match="cv_scheme"):
+        XSLTheoryGenerator(llm_client=None, conditions=conditions, cv_scheme="warm")
+
+
+def test_running_best_from_another_scheme_is_rescored_first(conditions, leaderboard) -> None:
+    from dataclasses import replace
+
+    base = leaderboard[0]
+    # a stale, flattering score under the old warm-started scheme
+    warm = cross_validate_theory(base.theory, conditions, k=2, budget=BUDGET, x0=base.fit.params)
+    assert warm.scheme == "warm-random"
+    start = Entry(label="baseline", theory=base.theory, fit=base.fit, cv=replace(warm, heldout_nll=0.0))
+    gen, _ = _generator(conditions, [json.dumps(UNIFORM), critique("continue")])
+    result = gen.propose_theory(guide="g", leaderboard=leaderboard, max_iters=1, start=start)
+    assert start.cv.scheme == "cold-grouped" and start.cv.heldout_nll > 0
+    # compared on the same footing: the worse candidate loses to the re-scored start
+    assert not result.history[0].accepted and result.best.score == start.cv.heldout_nll
+    # a start already under the gate's scheme is not refitted
+    before = start.cv
+    gen, _ = _generator(conditions, [json.dumps(UNIFORM), critique("continue")])
+    gen.propose_theory(guide="g", leaderboard=leaderboard, max_iters=1, start=start)
+    assert start.cv is before
+
+
+def test_ensure_cv_rescores_other_schemes_and_the_scheme_is_saved(conditions, leaderboard, tmp_path) -> None:
+    base = leaderboard[0]
+    main_xsl_offline.save(tmp_path, [base])
+    rows = json.loads((tmp_path / "leaderboard.json").read_text())
+    assert rows[0]["cv"]["scheme"] == base.cv.scheme == "cold-random"
+    del rows[0]["cv"]["scheme"]  # saved before schemes were recorded
+    (tmp_path / "leaderboard.json").write_text(json.dumps(rows))
+    entries = main_xsl_offline.load(tmp_path, conditions)
+    assert entries[0].cv.scheme == "unrecorded"
+    main_xsl_offline.ensure_cv(entries, conditions, k=2, budget=BUDGET, workers=1)
+    assert entries[0].cv.scheme == "cold-grouped"
+    kept = entries[0].cv
+    main_xsl_offline.ensure_cv(entries, conditions, k=2, budget=BUDGET, workers=1)
+    assert entries[0].cv is kept
+    main_xsl_offline.ensure_cv(entries, conditions, k=2, budget=BUDGET, workers=1, scheme="warm-random")
+    assert entries[0].cv.scheme == "warm-random"
+
+
+def test_cross_validate_scheme_checks_its_inputs(conditions, leaderboard) -> None:
+    from src.xsl.fitting import cross_validate_scheme
+
+    base = leaderboard[0]
+    with pytest.raises(ValueError, match="full_params"):
+        cross_validate_scheme(base.theory, conditions, "warm-grouped", k=2, budget=BUDGET)
+    with pytest.raises(ValueError, match="scheme must be"):
+        cross_validate_scheme(base.theory, conditions, "hot-random", k=2, budget=BUDGET)
