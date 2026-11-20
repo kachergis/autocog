@@ -1,6 +1,6 @@
 # Offline AutoCog for cross-situational word learning: progress report
 
-Status: **draft, 2026-10-19; scoring checks added 2026-11-16.** It covers everything done so far: Phase 0, the
+Status: **draft, 2026-10-19; scoring checks added 2026-11-16, larger-budget rerun 2026-11-19.** It covers everything done so far: Phase 0, the
 data bridge; Phase 1, theory generation in mode B (the full corpus visible);
 re-evaluation under three objectives; Phase 2, a debate between the best
 generated theory and the best incumbent; and a first Phase 3 run of
@@ -28,8 +28,11 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 - **Scoring checks (2026-11-16) confirm the lead over the incumbents but
   not the order at the top.** With cold-started folds, and with folds that
   hold out whole experiments, `xsl_14` stays at least 205 NLL ahead of
-  kachergis and fazly. Its lead over `xsl_09` shrinks from 42 to 15 and then
-  reverses (−25), so `xsl_09`–`14` are best read as a tied cluster. The
+  kachergis and fazly. But a cold-started rerun of `xsl_09`–`14` at the
+  robust-refit budget puts all five within 25–30 NLL of each other, with an
+  order that changes with the split: `xsl_13` is first on random folds and
+  `xsl_12` on grouped folds. `xsl_13`'s and `xsl_14`'s leads on the leaderboard
+  come mostly from warm-started folds. `xsl_09`–`14` are a tied cluster. The
   weighted SSE had been computed against a median-ability person and is now
   corrected. See *Scoring checks*.
 - **One lineage.** Every leading theory descends from `xsl_01`. The lineage
@@ -109,6 +112,7 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 | 10-19 | **Phase 3, prospective designs** (`xsl_14` vs fazly): an LLM-written design generator, a power simulation at N = 50 and a frozen queue. 3 designs accepted from 4 proposals. | `767303cb` |
 | 10-19 | Phase 3 for kachergis vs fazly and for `xsl_14` vs kachergis: 3 designs accepted from 3 proposals in each. | `e49ec54c` |
 | 11-16 | **Scoring checks**: wSSE corrected to the population-mean prediction; cold-start and grouped-by-experiment CV for four theories. | `8740f84e`, `f01705b1` |
+| 11-17/19 | Cold-start CV of `xsl_09`, `xsl_11`–`14` at the robust-refit budget, random and grouped folds. | `00c88f8d` |
 
 | run | what | directory |
 |---|---|---|
@@ -124,6 +128,8 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 | designs | Phase 3: queue of accepted designs with frozen predictions, `xsl_14` vs fazly | [`results/xsl/designs_xsl_14_vs_inc_fazly/`](../results/xsl/designs_xsl_14_vs_inc_fazly/) |
 | designs 2 | the same for kachergis vs fazly | [`results/xsl/designs_kachergis_vs_inc_fazly/`](../results/xsl/designs_kachergis_vs_inc_fazly/) |
 | designs 3 | the same for `xsl_14` vs kachergis | [`results/xsl/designs_xsl_14_vs_kachergis/`](../results/xsl/designs_xsl_14_vs_kachergis/) |
+| scoring checks | wSSE recomputation; cold-start and grouped CV of four theories | [`results/xsl/cv_checks/`](../results/xsl/cv_checks/) |
+| scoring checks 2 | cold-start and grouped CV of `xsl_09`, `xsl_11`–`14` at the robust-refit budget | [`results/xsl/cv_checks_robust/`](../results/xsl/cv_checks_robust/) |
 
 ## Setup
 
@@ -135,7 +141,7 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 | Objective (final) | **Random ability**: person s has an offset u_s ~ N(0, `ability_sd`²) on the log-odds of the theory's predicted accuracy. Each person's likelihood is integrated over u_s, using exact flat tails plus composite Gauss–Legendre panels (within 1.4e-7 per person of a dense grid). `ability_sd` and the guessing rate `lapse` are fitted and counted in k. |
 | Earlier objectives | **Multinomial** over all objects (generation rounds 1–9). **Binomial**: each item's correct count out of n. See *Why the objective changed*. |
 | Fitting | Differential evolution. Robust fits use 3 starts, the first warm-started from the previous fit; each CV fold uses 2 starts warm-started from the full-corpus fit. New candidates warm-start from the running best and the leaderboard. |
-| Score | Held-out NLL from 5-fold cross-validation over conditions, with the same split for every theory. Weighted SSE of held-out item accuracy is reported alongside. |
+| Score | Held-out NLL from 5-fold cross-validation over conditions, with the same split for every theory. Weighted SSE of held-out item accuracy is reported alongside. The leaderboard's folds are warm-started and randomly split; see *Scoring checks* for cold-started and grouped variants. |
 | Incumbents | NumPy ports of the xsl-bakeoff v05 panel (fazly, uncfam_gamma, uncfam_attention, tilles, Bayesian_decay) plus kachergis and a co-occurrence baseline. Each matches XSLmodels on all 47 conditions at its v05 fit. Hypothesis-testing models (propose-but-verify, pursuit) are not included: too slow to fit. |
 
 ## Current leaderboard
@@ -193,8 +199,9 @@ which gave 0.400 for `xsl_14`, 0.504 for fazly and 0.689 for kachergis).
 ## Scoring checks (2026-11-16)
 
 A review of the scoring raised three concerns. Each was tested on `xsl_14`,
-`xsl_09`, kachergis and fazly; tables and code are in
-[`results/xsl/cv_checks/`](../results/xsl/cv_checks/).
+`xsl_09`, kachergis and fazly, then the top cluster was rerun at a larger
+budget; tables and code are in [`results/xsl/cv_checks/`](../results/xsl/cv_checks/)
+and [`results/xsl/cv_checks_robust/`](../results/xsl/cv_checks_robust/).
 
 1. **Weighted SSE.** Under the random-ability objective it compared the
    accuracy of a median-ability person with the human mean. It now uses the
@@ -206,6 +213,13 @@ A review of the scoring raised three concerns. Each was tested on `xsl_14`,
    variants were spread over all five folds, so each was predicted from fits
    that saw its siblings.
 
+Grouped folds keep each experiment family in one fold: the 12 filtering
+conditions; the six frequency × contextual-diversity conditions (`freq369*`
+plus the two `*_x8_*` schedules); and the five temporal-contiguity
+reorderings. Every other condition is its own group. Cold fits use the
+leaderboard's per-fold budget (popsize 10, maxiter 40, 2 restarts, no warm
+start):
+
 | held-out NLL | warm start, random folds (leaderboard) | cold start, random folds | cold start, folds grouped by experiment |
 |---|---|---|---|
 | `xsl_14` | 16,880.2 | 16,914.6 | 17,008.5 |
@@ -213,20 +227,39 @@ A review of the scoring raised three concerns. Each was tested on `xsl_14`,
 | kachergis | 17,135.1 | 17,167.9 | 17,213.7 |
 | fazly | 17,153.6 | 17,153.8 | 17,419.6 |
 
+That budget left `xsl_14`'s cold fits 32 NLL short of the warm training
+optimum, so the top cluster (`xsl_09`, `xsl_11`–`14`) was rerun cold at the
+robust-refit budget (popsize 12, maxiter 60, 2 restarts; about 61 CPU-hours):
+
+| held-out NLL | warm start, random folds (leaderboard) | cold start, random folds | cold start, grouped folds |
+|---|---|---|---|
+| `xsl_14` | 16,880.2 | 16,908.1 | 17,000.7 |
+| `xsl_13` | 16,886.6 | **16,902.4** | 16,993.8 |
+| `xsl_12` | 16,905.5 | 16,906.6 | **16,978.4** |
+| `xsl_11` | 16,913.6 | 16,916.2 | 17,007.9 |
+| `xsl_09` | 16,921.7 | 16,927.8 | 17,002.5 |
+
 - **The lead over the incumbents holds.** `xsl_14` is at least 205 NLL ahead
   of both in every variant. A bootstrap over conditions on the leaderboard
   scores gives 95% intervals of −381 to −139 against kachergis and −393 to
   −166 against fazly.
-- **The order inside the top cluster does not hold.** `xsl_14` leads
-  `xsl_09` by 42 on the leaderboard, by 15 with cold starts, and trails it
-  by 25 under grouped folds. On the leaderboard it leads `xsl_13` by 6.5
-  (bootstrap interval −16 to +4). The exposure-scaling step and the two
-  debate revisions are therefore not established improvements.
-- **Warm starts did inflate scores.** Kachergis's leaderboard value was
-  optimistic by about 30: in one fold the cold fit found a better training
-  optimum that predicts worse. For `xsl_14` the +34 is an upper bound,
-  because its cold fits stopped 32 NLL short of the warm training optimum.
-  The cold budget is too small for 15–17 parameters.
+- **The order inside the top cluster does not hold.** Cold-started at the
+  larger budget, `xsl_09`–`14` span 25 NLL on random folds and 30 on grouped
+  folds. `xsl_13` is first on random folds and `xsl_12` on grouped folds,
+  22 ahead of `xsl_14`. `xsl_09`'s position moves with the budget: at the
+  smaller budget it led `xsl_14` by 25 under grouped folds, at the larger
+  one it trails by 1.9 with almost the same training NLL. Fold-level
+  optimiser noise of about 20 NLL is as large as the gaps. The
+  exposure-scaling step and the two debate revisions are therefore not
+  established improvements.
+- **Warm starts inflated the newest theories most.** Cold minus warm
+  held-out NLL is +28 for `xsl_14` and +16 for `xsl_13`, but only +1 to +6
+  for `xsl_09`, `xsl_11` and `xsl_12`. Most of `xsl_14`'s 25–42 lead over
+  those three on the leaderboard is the warm start. `xsl_14`'s cold fits
+  still end 16 NLL short of its warm training optimum, so part of its +28
+  may be optimiser shortfall rather than leakage. Kachergis's leaderboard
+  value was optimistic by about 30: in one fold the cold fit found a better
+  training optimum that predicts worse.
 - **Fazly's fit to the filtering experiment depended on sibling
   conditions.** With that experiment held out whole it loses 266 NLL, almost
   all of it there (4,571 against 4,212–4,295 for the other three). The
@@ -234,8 +267,9 @@ A review of the scoring raised three concerns. Each was tested on `xsl_14`,
   fazly fitted to other filtering conditions. Kachergis then leads fazly by
   206; with cold random folds fazly leads by 14. Their order is not settled.
 - **Limits of these checks.** One fold seed and one grouping; the
-  12-condition filtering fold dominates the grouped score; only four
-  theories were refitted.
+  12-condition filtering fold dominates the grouped score; seven of 19
+  theories were refitted (`xsl_09`, `xsl_11`–`14`, kachergis, fazly), and
+  the incumbents only at the smaller budget.
 
 ## How the theories evolved
 
@@ -385,7 +419,9 @@ filtering designs and the mixed-frequency 4×4 conditions.
 | 6 | query | 3 (16,889.7–16,914.7) | none passed: best query move 3.1 → 2.5 SE, at +34 NLL |
 
 The accepted revisions improved the leaderboard score (−25 held-out NLL; wSSE
-0.388 → 0.363; but see *Scoring checks*: the gain is not robust) but barely moved the queries fazly won (−4.4 → −4.1 SE). In
+0.388 → 0.363; but see *Scoring checks*: with cold-started folds `xsl_12`
+scores within 2 NLL of `xsl_14` on random folds and 22 better on grouped
+folds) but barely moved the queries fazly won (−4.4 → −4.1 SE). In
 round 4, every gated candidate predicted the same late-repetition gain as
 `xsl_14` once fitted (.041–.043, against people's .177). The mechanisms
 were in the code, and the fit switched them off. In rounds 5–6 the
@@ -620,8 +656,8 @@ strongest candidates for a first human run.
   now refitted, but other choices are not counted in k.
 - **Cross-validation.** Leaderboard folds are warm-started from the
   full-corpus fit and split near-replicate conditions across folds. The
-  checks above bound the effect for four theories; the other 15 have not
-  been rerun.
+  checks above measure the effect for seven theories; the other 12 have not
+  been rerun, and the leaderboard still shows warm-started scores.
 - **Debate queries were chosen with the human data visible**, so each side
   winning its own query is close to guaranteed, and the 2-SE test ignores
   uncertainty in the predictions.
@@ -657,10 +693,12 @@ the run resumed from its saved state.
 
 ## Next steps
 
-0. **Settle the top of the leaderboard.** Rerun `xsl_09`–`14` with cold
-   starts at the robust-refit budget, on grouped folds, with several fold
-   seeds. Make grouped, cold-started CV the default gate, and report
-   bootstrap intervals on NLL differences.
+0. **Make cold-started, grouped CV the score.** The rerun at the
+   robust-refit budget shows `xsl_09`–`14` cannot be ranked on one split.
+   Make cold-started, grouped CV the default accept gate and leaderboard
+   score; add fold seeds or repeated grouped splits; and report bootstrap
+   intervals on NLL differences, so that a revision has to beat noise of
+   about 20–30 NLL. Rescore the remaining theories that way.
 1. **A structurally different theory for repetition.** The gated debate
    shows that patching the commitment-gated family does not produce "late
    repetitions help, early exposures don't hurt". Seed generation from fazly,
@@ -802,6 +840,16 @@ cp -R results/xsl/debate_xsl_12_vs_inc_fazly results/xsl/debate_xsl_12_vs_inc_fa
 uv run python main_xsl_debate.py --a xsl_12 --b inc_fazly --gate nll_and_query --rounds 3 \
     --out results/xsl/debate_xsl_12_vs_inc_fazly_gated \
     --llm_provider openrouter --llm_model anthropic/claude-sonnet-5.5
+```
+
+```bash
+# scoring checks: wSSE recomputation, cold-start and grouped CV (resumable; report rewrites comparison.md)
+.venv/bin/python scripts/xsl/cv_checks.py run --workers 12
+.venv/bin/python scripts/xsl/cv_checks.py report
+.venv/bin/python scripts/xsl/cv_checks.py run --out results/xsl/cv_checks_robust \
+    --labels xsl_14 xsl_13 xsl_12 xsl_11 xsl_09 --popsize 12 --maxiter 60 --restarts 2 --workers 13
+.venv/bin/python scripts/xsl/cv_checks.py report --out results/xsl/cv_checks_robust \
+    --labels xsl_14 xsl_13 xsl_12 xsl_11 xsl_09
 ```
 
 ```bash

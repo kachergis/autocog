@@ -1,6 +1,6 @@
 # Offline AutoCog for cross-situational word learning: summary
 
-*2026-10-20; revised 2026-11-16 after scoring checks. Full report: [`xsl_mode_b_report.md`](xsl_mode_b_report.md); design:
+*2026-10-20; revised 2026-11-16 and 2026-11-19 after scoring checks. Full report: [`xsl_mode_b_report.md`](xsl_mode_b_report.md); design:
 [`xsl_offline_proposal.md`](xsl_offline_proposal.md); branch `xsl-offline-phase0`.*
 
 ## What was done
@@ -61,11 +61,13 @@ LLM cost was about $8.4 in logged tokens. Everything else ran locally.
      that hold out whole experiments, and a bootstrap over conditions (95%
      interval −381 to −139 against kachergis). `xsl_14` stays at least 205
      NLL ahead of both incumbents.
-   - **The order at the top did not survive.** `xsl_14` leads `xsl_09` by
-     42 on the leaderboard, by 15 with cold starts, and trails it by 25 when
-     whole experiments are held out. `xsl_09`–`14` are a tied cluster, so the
-     later steps (exposure scaling, the debate revisions) are not
-     established improvements.
+   - **The order at the top did not survive.** Refitted from cold starts at
+     a larger budget, `xsl_09`–`14` fall within 25–30 NLL of each other, and
+     the leader changes with the split (`xsl_13` on random folds, `xsl_12`
+     when whole experiments are held out). `xsl_14`'s leaderboard lead came
+     mostly from warm-started folds. They are a tied cluster, so the later
+     steps (exposure scaling, the debate revisions) are not established
+     improvements.
    - They form one lineage built on `xsl_01`: mutual-responsibility credit,
      interference instead of global decay, test-time competition for
      objects, contiguity, commitment with redistributed credit (`xsl_09`, the
@@ -120,10 +122,11 @@ LLM cost was about $8.4 in logged tokens. Everything else ran locally.
 
 ## Obvious next steps
 
-0. **Settle the top of the leaderboard.** Rerun `xsl_09`–`14` with cold
-   starts at a larger fitting budget, on folds grouped by experiment, with
-   several fold seeds. Make that the default accept gate, and report
-   intervals on NLL differences.
+0. **Change the score.** Make cold-started CV on folds grouped by
+   experiment the default accept gate and leaderboard score, with several
+   fold seeds and intervals on NLL differences. On one split, fold-level
+   optimiser noise (about 20 NLL) is as large as the gaps in the top
+   cluster.
 1. **Run the three strongest designs on people.**
    - Export the trial-order, mutual-exclusivity and retroactive-reappearance
      designs to a jsPsych timeline.
