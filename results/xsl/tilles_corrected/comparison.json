@@ -1,0 +1,18 @@
+[
+  {
+    "label": "inc_tilles",
+    "k": 5,
+    "nll_before": 17313.597374990426,
+    "nll_after": 17292.993806381714,
+    "cv_before": 17357.181387164856,
+    "cv_after": 17463.117411079787,
+    "cv_wsse_after": 0.7114238013484986,
+    "lapse_after": 0.001,
+    "at_bound_after": [
+      "lapse"
+    ],
+    "bounds_override": {},
+    "theory_from": "theories/xsl/incumbents/tilles.yaml",
+    "minutes": 34.08877373125094
+  }
+]

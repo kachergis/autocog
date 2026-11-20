@@ -174,7 +174,9 @@ overfitting, or folds landing in different optima.
 | 18 | Bayesian_decay ‡ | 5 | 17,657.3 | 0.714 | +54 | `ch_dec` |
 | 19 | co-occurrence baseline ‡ | 2 | 19,568.7 | 1.185 | +133 | |
 
-‡ Standard fit, not a robust multi-start refit. Every theory except the
+‡ Standard fit, not a robust multi-start refit. The tilles row is the old
+model; the corrected model (next step 0b) scores 17,293.0 full-corpus NLL
+against 17,313.6 and is still 17th. Every theory except the
 baseline fits `lapse` to its .001 floor (baseline: .35), so it is not listed
 under "at a bound". `ability_sd` is 1.43–1.59 for every theory. The wSSE column compares the
 population-mean prediction with human mean accuracy (corrected 2026-11-16;
@@ -700,12 +702,18 @@ the run resumed from its saved state.
    theories first (several hours). Still to do: add fold seeds or repeated
    grouped splits, and report bootstrap intervals on NLL differences, so
    that a revision has to beat noise of about 20–30 NLL.
-0b. **Update the tilles port.** XSLmodels master (after the `e70c10c` pin)
-   corrects `tilles()` (eq 1's 1/C, eq 2's denominator, eq 7's entropy
-   normalisation, alpha updated for every seen word, flux on zero
-   denominators); at the v05 parameters SSE moves .6125 → .6466, and the
-   bakeoff store has a refit (SSE .6061). Our port and fit are the old
-   model. No other ported model, the scoring code, or the corpus changed.
+0b. **Done: the tilles port follows the corrected XSLmodels `tilles()`**
+   (`20826a50`, `e5fd145b`). XSLmodels after the `e70c10c` pin corrects
+   eq 1's 1/C, eq 2's denominator, eq 7's entropy normalisation (alpha
+   updated for every seen word) and flux on zero denominators. The port
+   matches R `b44b9fa` to ~1e-14; `incumbents.json` holds xsl-bakeoff's refit
+   (SSE .6061, was .6125), and the R bridge runs tilles in that build.
+   Refit under random ability and scored cold-grouped, the correction gains
+   21 NLL on the full corpus and 25 held out (17,488.3 → 17,463.1); tilles
+   stays last of the scored incumbents, 44 behind fazly
+   ([`results/xsl/tilles_corrected/note.md`](../results/xsl/tilles_corrected/note.md)).
+   Phase 3's frozen tilles predictions are still from the old model. No
+   other ported model, the scoring code, or the corpus changed.
 1. **A structurally different theory for repetition.** The gated debate
    shows that patching the commitment-gated family does not produce "late
    repetitions help, early exposures don't hurt". Seed generation from fazly,

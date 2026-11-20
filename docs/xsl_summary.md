@@ -127,8 +127,9 @@ LLM cost was about $8.4 in logged tokens. Everything else ran locally.
    has to be re-scored that way (the next run does it first). Add several
    fold seeds and intervals on NLL differences: on one split, fold-level
    optimiser noise (about 20 NLL) is as large as the gaps in the top
-   cluster. Also update the tilles port to the corrected XSLmodels
-   `tilles()`; no other ported model or the corpus changed.
+   cluster. (Done: the tilles port now follows the corrected XSLmodels
+   `tilles()`. It gains 25 held-out NLL and is still the weakest scored
+   incumbent; no other ported model or the corpus changed.)
 1. **Run the three strongest designs on people.**
    - Export the trial-order, mutual-exclusivity and retroactive-reappearance
      designs to a jsPsych timeline.
