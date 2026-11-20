@@ -122,11 +122,13 @@ LLM cost was about $8.4 in logged tokens. Everything else ran locally.
 
 ## Obvious next steps
 
-0. **Change the score.** Make cold-started CV on folds grouped by
-   experiment the default accept gate and leaderboard score, with several
-   fold seeds and intervals on NLL differences. On one split, fold-level
+0. **Finish changing the score.** Cold-started CV on folds grouped by
+   experiment is now the default accept gate; the stored leaderboard still
+   has to be re-scored that way (the next run does it first). Add several
+   fold seeds and intervals on NLL differences: on one split, fold-level
    optimiser noise (about 20 NLL) is as large as the gaps in the top
-   cluster.
+   cluster. Also update the tilles port to the corrected XSLmodels
+   `tilles()`; no other ported model or the corpus changed.
 1. **Run the three strongest designs on people.**
    - Export the trial-order, mutual-exclusivity and retroactive-reappearance
      designs to a jsPsych timeline.

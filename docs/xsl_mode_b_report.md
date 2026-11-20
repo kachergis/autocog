@@ -113,6 +113,7 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 | 10-19 | Phase 3 for kachergis vs fazly and for `xsl_14` vs kachergis: 3 designs accepted from 3 proposals in each. | `e49ec54c` |
 | 11-16 | **Scoring checks**: wSSE corrected to the population-mean prediction; cold-start and grouped-by-experiment CV for four theories. | `8740f84e`, `f01705b1` |
 | 11-17/19 | Cold-start CV of `xsl_09`, `xsl_11`–`14` at the robust-refit budget, random and grouped folds. | `00c88f8d` |
+| 11-19 | Cold-started, grouped CV made the default accept gate; CV results record their scheme. | `04f3fa80` |
 
 | run | what | directory |
 |---|---|---|
@@ -141,7 +142,7 @@ Design: [`xsl_offline_proposal.md`](xsl_offline_proposal.md). Branch
 | Objective (final) | **Random ability**: person s has an offset u_s ~ N(0, `ability_sd`²) on the log-odds of the theory's predicted accuracy. Each person's likelihood is integrated over u_s, using exact flat tails plus composite Gauss–Legendre panels (within 1.4e-7 per person of a dense grid). `ability_sd` and the guessing rate `lapse` are fitted and counted in k. |
 | Earlier objectives | **Multinomial** over all objects (generation rounds 1–9). **Binomial**: each item's correct count out of n. See *Why the objective changed*. |
 | Fitting | Differential evolution. Robust fits use 3 starts, the first warm-started from the previous fit; each CV fold uses 2 starts warm-started from the full-corpus fit. New candidates warm-start from the running best and the leaderboard. |
-| Score | Held-out NLL from 5-fold cross-validation over conditions, with the same split for every theory. Weighted SSE of held-out item accuracy is reported alongside. The leaderboard's folds are warm-started and randomly split; see *Scoring checks* for cold-started and grouped variants. |
+| Score | Held-out NLL from 5-fold cross-validation over conditions, with the same split for every theory. Weighted SSE of held-out item accuracy is reported alongside. The leaderboard's folds are warm-started and randomly split; see *Scoring checks* for cold-started and grouped variants. Since 2026-11-19 the accept gate and the runners default to cold-started folds grouped by experiment family (`--cv_scheme cold-grouped`, 2 restarts per fold); each CV records its scheme, and theories scored under another scheme are re-scored before any comparison. |
 | Incumbents | NumPy ports of the xsl-bakeoff v05 panel (fazly, uncfam_gamma, uncfam_attention, tilles, Bayesian_decay) plus kachergis and a co-occurrence baseline. Each matches XSLmodels on all 47 conditions at its v05 fit. Hypothesis-testing models (propose-but-verify, pursuit) are not included: too slow to fit. |
 
 ## Current leaderboard
@@ -693,12 +694,18 @@ the run resumed from its saved state.
 
 ## Next steps
 
-0. **Make cold-started, grouped CV the score.** The rerun at the
-   robust-refit budget shows `xsl_09`–`14` cannot be ranked on one split.
-   Make cold-started, grouped CV the default accept gate and leaderboard
-   score; add fold seeds or repeated grouped splits; and report bootstrap
-   intervals on NLL differences, so that a revision has to beat noise of
-   about 20–30 NLL. Rescore the remaining theories that way.
+0. **Finish moving to cold-started, grouped CV.** It is now the default
+   accept gate (`04f3fa80`), but the stored leaderboard is still
+   warm-started: the next run of the loop or the debate re-scores all 19
+   theories first (several hours). Still to do: add fold seeds or repeated
+   grouped splits, and report bootstrap intervals on NLL differences, so
+   that a revision has to beat noise of about 20–30 NLL.
+0b. **Update the tilles port.** XSLmodels master (after the `e70c10c` pin)
+   corrects `tilles()` (eq 1's 1/C, eq 2's denominator, eq 7's entropy
+   normalisation, alpha updated for every seen word, flux on zero
+   denominators); at the v05 parameters SSE moves .6125 → .6466, and the
+   bakeoff store has a refit (SSE .6061). Our port and fit are the old
+   model. No other ported model, the scoring code, or the corpus changed.
 1. **A structurally different theory for repetition.** The gated debate
    shows that patching the commitment-gated family does not produce "late
    repetitions help, early exposures don't hurt". Seed generation from fazly,
