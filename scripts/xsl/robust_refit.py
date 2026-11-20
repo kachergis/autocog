@@ -66,6 +66,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="objective the --source run was scored with (default: --objective); its fits "
                         "only seed the warm start")
     p.add_argument("--bounds", nargs="*", default=[], help='overrides, e.g. "xsl_09:s=[0.01, 4]"')
+    p.add_argument("--theory", nargs="*", default=[],
+                   help='replace a theory\'s code from a YAML file, e.g. "inc_tilles=theories/xsl/incumbents/tilles.yaml" '
+                        "(a corrected port); its old fit only seeds the warm start")
     p.add_argument("--popsize", type=int, default=12)
     p.add_argument("--maxiter", type=int, default=60)
     p.add_argument("--restarts", type=int, default=3, help="DE runs for the full-corpus fit")
@@ -100,6 +103,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     conditions = load_corpus()
     overrides = parse_bounds(args.bounds)
+    replaced = dict(spec.split("=", 1) for spec in args.theory)
     source_objective = args.source_objective or args.objective
     source = {e.label: e for e in runner.load(args.source, conditions, source_objective)}
     missing = [label for label in args.labels if label not in source]
@@ -121,6 +125,8 @@ def main(argv: list[str] | None = None) -> None:
             continue
         old = source[label]
         theory = old.theory
+        if label in replaced:
+            theory = XSLTheory.from_yaml(replaced[label])
         if label in overrides:
             theory = XSLTheory(**{**theory.model_dump(), "parameters": {**theory.parameters, **overrides[label]}})
         x0 = dict(old.fit.params)
@@ -144,6 +150,7 @@ def main(argv: list[str] | None = None) -> None:
             "lapse_after": fit.params.get(LAPSE, float("nan")),
             "at_bound_after": fit.at_bound,
             "bounds_override": overrides.get(label, {}),
+            "theory_from": replaced.get(label),
             "minutes": fit.seconds / 60,
         })
         write_comparison(out, rows, source_objective, args.objective)

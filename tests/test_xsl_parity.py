@@ -113,7 +113,12 @@ def test_reference_runs_cover_ported_models() -> None:
     assert {r["model"] for r in reference[4:]} == set(INCUMBENT_YAMLS)
 
 
-@pytest.mark.parametrize("name", sorted(INCUMBENT_YAMLS))
+# reference_predictions.json is from the pinned XSLmodels 0.4.0 (e70c10c); tilles
+# was corrected after it, so its port is checked against reference_tilles.json
+CORRECTED_SINCE_PIN = {"tilles"}
+
+
+@pytest.mark.parametrize("name", sorted(set(INCUMBENT_YAMLS) - CORRECTED_SINCE_PIN))
 def test_incumbent_port_matches_r_on_every_condition(corpus, reference, name) -> None:
     """The XSLTheory ports of the v05 incumbents reproduce XSLmodels at the v05 fit.
 
@@ -163,3 +168,31 @@ def test_uncfam_gamma_one_is_uncfam(corpus) -> None:
         _, m1 = scoring.run(models.uncfam, params, cond)
         _, m2 = scoring.run(models.uncfam, {**params, "gamma": 1.0}, cond)
         np.testing.assert_array_equal(m1, m2)
+
+
+def test_tilles_port_matches_corrected_r_on_every_condition(corpus) -> None:
+    """The tilles port reproduces XSLmodels' corrected tilles() (b44b9fa): at
+    xsl-bakeoff's refit with it, and at two other settings, one with the low
+    alpha_0 that drove associations negative before the correction."""
+    from src.xsl.theory import XSLTheory
+
+    ref = json.loads((DATA_DIR / "reference_tilles.json").read_text())
+    assert ref["xslmodels_commit"].startswith("b44b9fa")
+    theory = XSLTheory.from_yaml(INCUMBENT_YAMLS["tilles"])
+    assert ref["runs"][0]["params"] == ref["refit"]["params"]
+    for run in ref["runs"]:
+        for cond, r in zip(corpus, run["corpus"], strict=True):
+            perf, m = scoring.run(theory.learner(), run["params"], cond)
+            np.testing.assert_allclose(m, np.array(r["matrix"], dtype=float), rtol=1e-9, atol=1e-12,
+                                       err_msg=f"tilles matrix, {cond.label}")
+            np.testing.assert_allclose(perf, np.array(r["perf"], dtype=float), rtol=0, atol=1e-9,
+                                       err_msg=f"tilles perf, {cond.label}")
+        assert scoring.weighted_sse(theory.learner(), run["params"], corpus) == pytest.approx(run["sse"], abs=1e-12)
+
+
+def test_tilles_rejects_parameters_outside_the_unit_interval(corpus) -> None:
+    from src.xsl.theory import XSLTheory
+
+    theory = XSLTheory.from_yaml(INCUMBENT_YAMLS["tilles"])
+    with pytest.raises(ValueError, match="tilles"):
+        scoring.run(theory.learner(), {"x": 1.5, "b": 0.5, "alpha_0": 0.9}, corpus[0])
