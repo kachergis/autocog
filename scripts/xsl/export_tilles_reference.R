@@ -7,7 +7,10 @@
 # and refit tilles with it. This writes data/xsl/reference_tilles.json: the
 # refit's parameters and SSE, and xsl_run()'s perf and final matrix on every
 # corpus condition at the refit and at two other settings (one with a low
-# alpha_0, which drove associations negative under the old eq 7).
+# alpha_0, which drove associations negative under the old eq 7). It also
+# writes `incumbent`, the incumbents.json entry for the refit (with v05's own
+# per-item ModelPerf, and the library it runs in), which
+# scripts/xsl/update_tilles_incumbent.py copies into incumbents.json.
 #
 #   Rscript scripts/xsl/export_tilles_reference.R [--bakeoff ../xsl-bakeoff] [--out data/xsl]
 
@@ -47,11 +50,21 @@ run_reference <- function(params) {
   )
 }
 
+rows <- fits_env$gfd[fits_env$gfd$Model == "tilles", ]
+v05_perf <- lapply(xsl_datasets, \(d) as.numeric(rows$ModelPerf[rows$Condition == d$condition &
+                                                                   rows$condnum == d$label]))
+incumbent <- list(
+  name = ub("tilles"), constructor = ub("tilles"), params = lapply(refit, ub),
+  fixed = setNames(list(), character(0)), stochastic = ub(FALSE), sse_v05 = ub(fit$optim$bestval),
+  n_params = ub(3L), v05_perf = v05_perf, rlib = ub("tilles/Rlib"), xslmodels_commit = ub(commit)
+)
+
 out <- list(
   xslmodels_commit = ub(commit),
   xslmodels_version = ub(as.character(packageVersion("XSLmodels", lib.loc = lib))),
   group_fits_md5 = ub(unname(tools::md5sum(fits_path))),
   refit = list(params = lapply(refit, ub), sse = ub(fit$optim$bestval)),
+  incumbent = incumbent,
   runs = list(
     run_reference(refit),
     run_reference(list(x = 0.6, b = 0.8, alpha_0 = 0.85)),

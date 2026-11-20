@@ -9,6 +9,11 @@ needs nothing beyond the standard library and NumPy.
 
 Incumbent predictions are a *reference* for prospective designs (where would a
 new theory disagree with the field's best models?), never a loss target.
+
+Most incumbents run on the pinned build (`default_rlib()`). One that
+xsl-bakeoff refit with a corrected model names its own library in
+incumbents.json (`rlib`, relative to the pinned library's parent, e.g.
+tilles -> `tilles/Rlib`, XSLmodels b44b9fa), and `predict` runs it there.
 """
 
 from __future__ import annotations
@@ -50,6 +55,8 @@ class Incumbent:
     stochastic: bool = False
     sse_v05: float | None = None
     n_params: int = 0
+    rlib: str | None = None              # own library, relative to default_rlib().parent; None = pinned
+    xslmodels_commit: str | None = None  # the commit installed there
 
     def request(self) -> dict[str, Any]:
         return {"name": self.name, "constructor": self.constructor,
@@ -67,6 +74,8 @@ def load_incumbents(data_dir: Path | None = None) -> dict[str, Incumbent]:
             stochastic=d["stochastic"],
             sse_v05=d["sse_v05"],
             n_params=d["n_params"],
+            rlib=d.get("rlib"),
+            xslmodels_commit=d.get("xslmodels_commit"),
         )
         for name, d in raw.items()
     }
@@ -129,11 +138,25 @@ def predict(
     """Per-item predicted accuracy of each incumbent on each design, from R.
 
     Returns `{incumbent name: [perf for designs[0], perf for designs[1], ...]}`.
-    `n_sim` and `seed` only matter for stochastic incumbents.
+    `n_sim` and `seed` only matter for stochastic incumbents. Incumbents with
+    their own library (`Incumbent.rlib`) run there, in a separate R process;
+    the rest run on `rlib` (default: the pinned library).
     """
-    rlib = rlib or default_rlib()
+    base = rlib or default_rlib()
+    groups: dict[Path, list[Incumbent]] = {}
+    for inc in incumbents:
+        lib = base if inc.rlib is None else default_rlib().parent / inc.rlib
+        groups.setdefault(lib, []).append(inc)
+    out: dict[str, list[np.ndarray]] = {}
+    for lib, group in groups.items():
+        out.update(_predict_with(group, designs, n_sim=n_sim, seed=seed, rlib=lib, rscript=rscript,
+                                 timeout=timeout))
+    return {inc.name: out[inc.name] for inc in incumbents}
+
+
+def _predict_with(incumbents, designs, *, n_sim, seed, rlib: Path, rscript, timeout) -> dict[str, list[np.ndarray]]:
     if not (rlib / "XSLmodels").is_dir():
-        raise FileNotFoundError(f"pinned XSLmodels library not found at {rlib}; set XSL_RLIB")
+        raise FileNotFoundError(f"XSLmodels library not found at {rlib}; set XSL_RLIB to the pinned one")
     ids = [str(i) for i in range(len(designs))]
     request = {
         "models": [inc.request() for inc in incumbents],

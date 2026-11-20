@@ -140,7 +140,15 @@ for (name in names(SPECS)) {
   # round-trip test compares the Python->Rscript bridge against these.
   v05_perf <- lapply(xsl_datasets, \(d) as.numeric(rows$ModelPerf[rows$Condition == d$condition &
                                                                      rows$condnum == d$label]))
-  incumbents[[name]] <- list(
+  # a model xsl-bakeoff refit with a corrected XSLmodels runs in that build
+  # (fits/v05/<name>/Rlib); its reference fixture comes from
+  # scripts/xsl/export_tilles_reference.R, not from the pinned library here
+  own_lib <- file.path(bakeoff, "fits", "v05", name, "Rlib")
+  own <- if (dir.exists(file.path(own_lib, "XSLmodels"))) list(
+    rlib = ub(file.path(name, "Rlib")),
+    xslmodels_commit = ub(trimws(readLines(file.path(bakeoff, "fits", "v05", name, "XSLMODELS_COMMIT"))))
+  ) else list()
+  incumbents[[name]] <- c(list(
     name = ub(name),
     constructor = ub(spec$constructor),
     params = obj(params),
@@ -149,7 +157,7 @@ for (name in names(SPECS)) {
     sse_v05 = ub(fit$optim$bestval),
     n_params = ub(length(spec$params)),
     v05_perf = v05_perf
-  )
+  ), own)
 }
 
 # ---- reference predictions for the Python ports -----------------------------

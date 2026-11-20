@@ -10,7 +10,8 @@
 #
 # <Rlib> is the library holding the pinned XSLmodels build (normally
 # xsl-bakeoff/fits/v05/Rlib), so predictions come from the same package
-# version as the incumbent fits.
+# version as the incumbent fits. A model refit with a corrected build (tilles)
+# runs in that build instead: src/xsl/incumbents.py calls this once per library.
 
 args <- commandArgs(trailingOnly = TRUE)
 stopifnot(length(args) == 3)

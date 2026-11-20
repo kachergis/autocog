@@ -89,3 +89,38 @@ def test_bridge_matches_python_port_on_a_new_asymmetric_design() -> None:
     py_perf, _ = scoring.run(models.uncfam, kach.params, design)
     assert r_perf.shape == (36,)
     np.testing.assert_allclose(py_perf, r_perf, rtol=0, atol=ATOL)
+
+
+def test_tilles_is_the_corrected_refit_in_its_own_library() -> None:
+    tilles = incumbents.load_incumbents()["tilles"]
+    ref = json.loads((DATA_DIR / "reference_tilles.json").read_text())
+    assert tilles.rlib == "tilles/Rlib" and tilles.xslmodels_commit == ref["xslmodels_commit"]
+    assert tilles.params == ref["refit"]["params"] and tilles.sse_v05 == ref["refit"]["sse"]
+    # every other incumbent runs on the pinned build
+    assert all(inc.rlib is None for name, inc in incumbents.load_incumbents().items() if name != "tilles")
+
+
+def test_tilles_port_reproduces_the_stored_refit_predictions() -> None:
+    from src.xsl.theory import XSLTheory
+
+    learner = XSLTheory.from_yaml("theories/xsl/incumbents/tilles.yaml").learner()
+    v05 = json.loads((DATA_DIR / "incumbents.json").read_text())["tilles"]
+    for cond, want in zip(load_corpus(), v05["v05_perf"], strict=True):
+        perf, _ = scoring.run(learner, v05["params"], cond)
+        np.testing.assert_allclose(perf, np.array(want, dtype=float), rtol=0, atol=ATOL, err_msg=cond.label)
+
+
+def test_predict_runs_each_library_once(monkeypatch) -> None:
+    calls = []
+
+    def fake(group, designs, *, rlib, **kw):
+        calls.append((rlib, [g.name for g in group]))
+        return {g.name: [np.zeros(1)] for g in group}
+
+    monkeypatch.setattr(incumbents, "_predict_with", fake)
+    panel = incumbents.load_panel()
+    out = incumbents.predict(panel, [load_corpus()[0]])
+    assert list(out) == [p.name for p in panel]
+    base = incumbents.default_rlib()
+    assert calls == [(base, ["fazly", "uncfam_gamma", "uncfam_attention", "Bayesian_decay"]),
+                     (base.parent / "tilles" / "Rlib", ["tilles"])]
