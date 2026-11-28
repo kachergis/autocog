@@ -1,0 +1,92 @@
+name: Commitment-gated exclusion with count-based residual familiarity
+theory: Learning follows the commitment-gated claim-exclusion account. Credit is the product of word-side
+  and object-side responsibilities. Retrieval-induced interference erodes links to absent partners, and
+  a fading trace amplifies repeated pairs. A word commits once one object dominates its association, and
+  a committed object is withdrawn from competing co-present words, with the freed credit redistributed.
+  The new claim is that people also keep a weak, interference-free familiarity trace of raw word-object
+  co-occurrence counts. This trace is not subject to competition or forgetting. At test it adds to the
+  competitive association, so words that never committed still show graded, frequency-driven partial knowledge.
+  Words that did commit are dominated by their competitive mapping.
+learn: |-
+  def learn(params, trials, n_words, n_objects):
+      d = params['d']
+      lam = params['lam']
+      Mmax = params['Mmax']
+      fl = params['fl']
+      b = params['b']
+      s = params['s']
+      r = params['r']
+      p = params['p']
+      rho = params['rho']
+      th = params['th']
+      kc = params['kc']
+      xi = params['xi']
+      g2 = params['g2']
+      q = 0.07
+      c = 0.5
+      g = 0.5
+      eps = 0.1
+      steep = 8.0
+      M = np.zeros((n_words, n_objects))
+      C = np.zeros((n_words, n_objects))
+      prev = np.zeros((n_words, n_objects))
+      for words, objs in trials:
+          words = np.asarray(words)
+          objs = np.asarray(objs)
+          nw = len(words)
+          no = len(objs)
+          enc = 1.0 / (1.0 + (no / c) ** g)
+          deff = min(0.95, d * (nw * no / 12.0) ** q * (no / 4.0) ** p)
+          ix = np.ix_(words, objs)
+          rows = M[words, :]
+          rs = rows / (rows.sum(1, keepdims=True) + 0.3)
+          mx = rs.max(1)
+          z = np.clip(steep * (mx - th), -30.0, 30.0)
+          commit = 1.0 / (1.0 + np.exp(-z))
+          rsb = rs[:, objs]
+          ratio = (rsb / (mx[:, None] + 1e-9)) ** 4
+          blk = M[ix].copy()
+          boost = 1.0 + r * prev[ix] + kc * commit[:, None] * ratio
+          contrib = commit[:, None] * rsb
+          tot = contrib.sum(0, keepdims=True)
+          cl = np.clip(tot - contrib, 0.0, 1.0)
+          M[words, :] *= (1.0 - deff)
+          M[:, objs] *= (1.0 - deff)
+          st = (blk + eps) ** s
+          stw = st * (1.0 - xi * cl)
+          rw = stw / (stw.sum(1, keepdims=True) + 1e-12)
+          ro = st / st.sum(0, keepdims=True)
+          inc = rw * ro
+          sat = np.clip(1.0 - blk / Mmax, 0.0, 1.0)
+          M[ix] = blk + lam * enc * boost * inc * sat
+          C[ix] += 1.0
+          prev *= rho
+          prev[ix] = 1.0
+      col = M.sum(0, keepdims=True)
+      share = (M + 1e-9) / (col + 0.05)
+      out = M * share ** b
+      rmax = C.max(1, keepdims=True)
+      fam = C / (rmax + 1e-9)
+      return out + fl + g2 * fam + 1e-6
+parameters:
+  d: '[0.0, 1.0]'
+  lam: '[0.05, 6]'
+  Mmax: '[0.3, 30]'
+  fl: '[0.0, 0.5]'
+  b: '[0.0, 3.0]'
+  s: '[0.01, 4]'
+  r: '[0.0, 3.0]'
+  ch_dec: '[0.3, 3]'
+  p: '[-0.5, 1.5]'
+  rho: '[0.0, 0.9]'
+  th: '[0.2, 0.9]'
+  kc: '[0, 40]'
+  xi: '[0.0, 1.0]'
+  g2: '[0.0, 2.0]'
+rationale: The leading theory predicts a bimodal outcome, where words are either committed and near-certain
+  or unlearned and at chance. This overpredicts accuracy in the 4-AFC and low-frequency filtering conditions,
+  and it underpredicts accuracy in several diffuse designs where humans show graded partial knowledge.
+  A weak, non-competitive co-occurrence-count familiarity trace adds frequency-sensitive information that
+  does not depend on commitment. It is normalised per word, so it only adds graded knowledge to words
+  that have not committed. It costs one extra parameter and keeps the mechanisms that already generalise
+  across the corpus.

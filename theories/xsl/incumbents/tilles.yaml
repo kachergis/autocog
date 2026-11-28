@@ -1,0 +1,87 @@
+name: Confidence-flux associative learning (Tilles & Fontanari 2012)
+theory: >-
+  Each word holds a probability distribution over objects. On every trial, confidence flows into
+  the word's links to the objects present from its links to previously seen but absent objects
+  (in proportion to how much confidence sits on the absent ones), while words not on the trial
+  shift confidence the other way. Each word's update is scaled by its own certainty (one minus
+  the normalised entropy of its distribution); uncertain words drift toward uniform. Novel words
+  start with a bias b toward the novel objects they appear with.
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      # XSLmodels tilles() as corrected after 0.4.0 (1b407e7, d07afff; b44b9fa)
+      x, b, alpha_0 = params["x"], params["b"], params["alpha_0"]
+      novel_w = np.ones(n_words, dtype=bool)
+      novel_o = np.ones(n_objects, dtype=bool)
+      m = np.zeros((n_words, n_objects))
+      alpha = np.full(n_words, alpha_0)
+
+      def entropy(p):  # XSLmodels shannon_entropy, in bits
+          q = p[p > 0] / p.sum()
+          return -(q * np.log2(q)).sum()
+
+      def check(rows):  # tilles_stop(): only reachable with parameters outside [0, 1]
+          if (m[rows] < 0).any():
+              raise ValueError("tilles: associations became negative")
+          if (m[rows].sum(axis=-1) == 0).any():
+              raise ValueError("tilles: a word has no associations left")
+
+      words, objects = trials[0]
+      m[np.ix_(words, objects)] = 1.0 / len(objects)  # eq 1: C is the number of objects
+      novel_w[words] = False
+      novel_o[objects] = False
+
+      for words, objects in trials[1:]:
+          cur_novel_o = objects[novel_o[objects]]
+          cur_old_o = objects[~novel_o[objects]]
+          other_old_o = np.setdiff1d(np.flatnonzero(~novel_o), cur_old_o)
+          novel_o[objects] = False
+          cur_novel_w = words[novel_w[words]]
+          cur_old_w = words[~novel_w[words]]
+          other_old_w = np.setdiff1d(np.flatnonzero(~novel_w), cur_old_w)
+          novel_w[words] = False
+          n_o = int((~novel_o).sum())
+
+          if len(cur_novel_w):  # eqs 2-4; b goes to the trial's objects if none is new
+              me_o = cur_novel_o if len(cur_novel_o) else objects
+              m[np.ix_(cur_novel_w, cur_old_o)] = (1 - b) / n_o
+              m[np.ix_(cur_novel_w, other_old_o)] = (1 - b) / n_o
+              m[np.ix_(cur_novel_w, me_o)] = b / len(me_o) + (1 - b) / n_o
+
+          # eq 7 for every word seen so far, entropy normalised by log2(n_o)
+          for w in np.flatnonzero(~novel_w):
+              check(w)
+              h = entropy(m[w, :]) / np.log2(n_o) if n_o > 1 else 0.0
+              alpha[w] = alpha_0 + (1 - alpha_0) * (1 - h)
+
+          for w in words:  # eqs 5, 8, 9
+              denom = m[w, objects].sum()
+              absent = m[w, other_old_o].sum()
+              r = x * absent / len(objects) if denom == 0 else x * m[w, objects] * (absent / denom)
+              a = alpha[w]
+              m[w, objects] = m[w, objects] + a * r + (1 - a) * (1 / n_o - m[w, objects])
+              old = m[w, other_old_o]
+              m[w, other_old_o] = old - a * x * old + (1 - a) * (1 / n_o - old)
+
+          if len(other_old_w):  # eqs 11-13
+              mt = m.copy()
+              ow_oo = np.ix_(other_old_w, other_old_o)
+              ow_tr = np.ix_(other_old_w, objects)
+              den = mt[ow_oo].sum(axis=1)
+              num = mt[ow_tr].sum(axis=1)
+              even = den == 0
+              flux = np.where(even, 0.0, num / np.where(even, 1.0, den))
+              r = b * mt[ow_oo] * flux[:, None]
+              if even.any() and len(other_old_o):
+                  r[even, :] = (b * num[even] / len(other_old_o))[:, None]
+              b_out = b if len(other_old_o) else 0.0
+              a = alpha[other_old_w][:, None]
+              m[ow_oo] = mt[ow_oo] + a * r + (1 - a) * (1 / n_o - mt[ow_oo])
+              m[ow_tr] = mt[ow_tr] - a * b_out * mt[ow_tr] + (1 - a) * (1 / n_o - mt[ow_tr])
+      check(slice(None))
+      return m
+parameters:
+  x: "[0, 1]"
+  b: "[0, 1]"
+  alpha_0: "[0, 1]"
+rationale: xsl-bakeoff v05 incumbent (XSLmodels tilles, as corrected after 0.4.0 at b44b9fa; earlier
+  versions of this port followed the 0.4.0 model); v05 bounds.

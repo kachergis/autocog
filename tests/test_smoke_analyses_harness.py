@@ -27,9 +27,6 @@ HARNESS = ROOT / "scripts" / "smoke_analyses.sh"
 NOT_INVOKED: dict[str, str] = {
     "figure_style.py": "shared style module, imported not run",
     "judge_similarity.py": "needs a live LLM judge; covered by a documented skip",
-    "aggregate_hilibig_battery.py": "consumes uncommitted per-run battery outputs; documented skip",
-    "plot_hilibig_battery_aggregate.py": "same battery outputs; documented skip",
-    "plot_hilibig_battery_correlation.py": "same battery outputs; documented skip",
     "smoke_analyses.sh": "the harness itself",
 }
 

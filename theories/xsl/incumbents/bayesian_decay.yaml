@@ -1,0 +1,26 @@
+name: Bayesian learner with decay (Bayesian_decay)
+theory: >-
+  An approximately Bayesian learner of P(word | object). Each trial multiplies the hypothesis
+  matrix by a likelihood that keeps pairs consistent with the trial (both present or both absent)
+  and down-weights inconsistent ones by alpha, with co-present pairs boosted by delta; columns are
+  renormalised. Choice is a power-Luce rule with exponent ch_dec.
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      alpha, delta = params["alpha"], params["delta"]
+      p = np.full((n_words, n_objects), 1.0 / n_objects)
+      for words, objects in trials:
+          w = np.zeros(n_words, dtype=bool)
+          o = np.zeros(n_objects, dtype=bool)
+          w[words] = True
+          o[objects] = True
+          both = np.outer(w, o)
+          consistent = both | np.outer(~w, ~o)
+          lik = np.where(consistent, 1.0, alpha) + (delta - 1.0) * both
+          p = lik * p
+          p = p / p.sum(axis=0, keepdims=True)
+      return p
+parameters:
+  alpha: "[1e-5, 10]"
+  delta: "[1e-5, 10]"
+  ch_dec: "[1e-5, 10]"
+rationale: xsl-bakeoff v05 incumbent (XSLmodels bayesian_decay); v05 bounds.

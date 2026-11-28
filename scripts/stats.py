@@ -15,6 +15,7 @@ Run:  python stats.py
 """
 from __future__ import annotations
 
+import os
 import sys
 from glob import glob
 from pathlib import Path
@@ -35,7 +36,9 @@ BIN = REPO / "results/recovery"
 CS1 = REPO / "results/human_decision_making_binary/ttb+wadd"            # binary human run (NLSWM)
 CS2 = REPO / "results/human_decision_making_cardinal/ttb+tallying"  # cardinal human run
 
-OUT = REPO / "results" / "stats"
+# AUTOCOG_STATS_OUT redirects the table (smoke_analyses.sh uses it so the
+# committed results/stats/ record is never rewritten by a smoke run).
+OUT = Path(os.environ.get("AUTOCOG_STATS_OUT") or REPO / "results" / "stats")
 OUT.mkdir(parents=True, exist_ok=True)
 
 ROWS: list[dict] = []

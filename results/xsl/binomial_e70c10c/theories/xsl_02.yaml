@@ -1,0 +1,65 @@
+name: Two-stage verify-and-consolidate with object-driven load
+theory: 'Each word holds a tentative referent hypothesis (propose-but-verify), tracked as an exact expected
+  distribution over learners, passing through three stages: freshly proposed, confirmed once, and consolidated
+  (durable). A hypothesis is only consolidated after a second confirmation. Unconsolidated hypotheses
+  are forgotten whenever the word is heard, with a probability that rises steeply (power-law) with the
+  number of objects on the trial and with the square root of the number of words, and fresh hypotheses
+  are more fragile than confirmed ones. A word with no surviving hypothesis, or whose hypothesis object
+  is absent, re-proposes among the present objects with probability a, strongly preferring objects already
+  claimed by no other word (mutual exclusivity). Unlearned words are guessed uniformly; choice is a power-law
+  Luce rule.'
+learn: |
+  def learn(params, trials, n_words, n_objects):
+      a = params['a']
+      f = params['f']
+      k = params['k']
+      g = params['g']
+      me = 20.0
+      h1 = np.zeros((n_words, n_objects))
+      h2 = np.zeros((n_words, n_objects))
+      S = np.zeros((n_words, n_objects))
+      for words, objects in trials:
+          words = np.asarray(words)
+          objects = np.asarray(objects)
+          nw = len(words)
+          no = len(objects)
+          load = (nw * 0.5) ** 0.5 * (no / 2.0) ** g
+          fe = 1.0 - (1.0 - f) ** load
+          h1w = h1[words] * (1.0 - fe)
+          h2w = h2[words] * (1.0 - 0.5 * fe)
+          Sw = S[words]
+          p1 = h1w[:, objects]
+          p2 = h2w[:, objects]
+          tot = h1w.sum(1) + h2w.sum(1) + Sw.sum(1)
+          none = np.clip(1.0 - tot, 0.0, 1.0)
+          habs = (h1w.sum(1) - p1.sum(1)) + (h2w.sum(1) - p2.sum(1))
+          moved = a * (none + habs)
+          col = (h1 + h2 + S).sum(0)
+          own = (h1[words] + h2[words] + Sw)[:, objects]
+          other = np.maximum(col[objects][None, :] - own, 0.0)
+          wts = 1.0 / (1.0 + me * other)
+          wts = wts / wts.sum(1, keepdims=True)
+          h1all = h1w * (1.0 - a)
+          h1all[:, objects] = moved[:, None] * wts
+          h2all = h2w * (1.0 - a)
+          h2all[:, objects] = p2 * (1.0 - k) + p1
+          Sw = Sw.copy()
+          Sw[:, objects] += k * p2
+          h1[words] = h1all
+          h2[words] = h2all
+          S[words] = Sw
+      tot = h1.sum(1) + h2.sum(1) + S.sum(1)
+      none_f = np.clip(1.0 - tot, 0.0, 1.0)
+      return h1 + h2 + S + none_f[:, None] / n_objects + 1e-6
+parameters:
+  a: '[0.05, 1]'
+  f: '[0, 0.5]'
+  k: '[0, 1]'
+  g: '[0.5, 3]'
+  ch_dec: '[0.3, 6]'
+rationale: The current best propose-but-verify model overpredicts accuracy for 1x4 (0.40 vs 0.19) and
+  underpredicts it for easy, repeated-confirmation designs such as 2x2 and 1x3. Making forgetting depend
+  steeply on the number of objects (fitted exponent g) separates 1x4, 3x4 and 4x4 from 1x3, 2x2 and 3x3,
+  and requiring a second confirmation before consolidation, with confirmed-once hypotheses forgotten at
+  half the rate, lets repeated consistent evidence lock words in while a single chance co-occurrence stays
+  fragile. This should raise dynamic range across designs and lower the needed lapse.
